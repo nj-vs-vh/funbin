@@ -38,7 +38,7 @@ class Point:
         return NotImplemented
 
     def __repr__(self):
-        return f"Point({self.x}, {self.y})"
+        return f"({self.x:.2f}, {self.y:.2f})"
 
 
 def is_ccw_order(A: Point, B: Point, C: Point) -> bool:
@@ -57,6 +57,9 @@ class Box:
     anchor: Point  # left bottom
     width: float
     height: float
+
+    def __repr__(self) -> str:
+        return f"Box({self.anchor}, w={self.width:.2f}, h={self.height:.2f})"
 
     @staticmethod
     def bounding(points: np.ndarray) -> "Box":
@@ -133,8 +136,6 @@ class Box:
             **patch_kw,
         )
 
-    # def almost_equal(self) ->
-
 
 @dataclass(frozen=True)
 class Polygon:
@@ -163,9 +164,9 @@ class Polygon:
             return False
 
         ray = (self.point_outside, p)
-        # print(p, [int(do_intersect(ray, edge)) for edge in itertools.pairwise(self.edge_endpoints)])
         intersections = sum(int(do_intersect(ray, edge)) for edge in itertools.pairwise(self.edge_endpoints))
-        return intersections % 2 == 1
+        res = intersections % 2 == 1
+        return res
 
     @functools.cached_property
     def area(self) -> float:
@@ -199,6 +200,7 @@ class IndexedTiling:
     box: Box
     index_bins: tuple[int, int]
     indexed_tiles: list[list[list[int]]]
+    tile_index_bins: list[list[tuple[int, int]]]
 
     @staticmethod
     def from_polygons(polygons: list[Polygon], bins: tuple[int, int]):
@@ -207,6 +209,7 @@ class IndexedTiling:
         cell_w = box.width / x_bins
         cell_h = box.height / y_bins
         indexed_tiles: list[list[list[int]]] = [[[] for _ in range(y_bins)] for _ in range(x_bins)]
+        tile_index_bins: list[list[tuple[int, int]]] = [[] for _ in polygons]
         for id, poly in enumerate(polygons):
             touched_is = []
             touched_js = []
@@ -216,11 +219,13 @@ class IndexedTiling:
             for i in range(min(touched_is), max(touched_is) + 1):
                 for j in range(min(touched_js), max(touched_js) + 1):
                     indexed_tiles[i][j].append(id)
+                    tile_index_bins[id].append((i, j))
         return IndexedTiling(
-            tiles=polygons,
+            tiles=polygons.copy(),
             box=box,
             index_bins=bins,
             indexed_tiles=indexed_tiles,
+            tile_index_bins=tile_index_bins,
         )
 
     def lookup_tile_id(self, p: Point) -> int | None:

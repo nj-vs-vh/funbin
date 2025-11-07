@@ -15,10 +15,18 @@ it = IndexedTiling.from_polygons(
 )
 
 
-def plot_indexing(icell: int, jcell: int) -> bool:
+def plot_indexing(cell: tuple[int, int] | None = None, poly_id: int | None = None) -> bool:
     fig, ax = plt.subplots()
 
-    touching_tiles = it.indexed_tiles[icell][jcell]
+    if cell is not None:
+        touching_tiles = it.indexed_tiles[cell[0]][cell[1]]
+        cells = [cell]
+    elif poly_id is not None:
+        cells = it.tile_index_bins[poly_id]
+        touching_tiles = [poly_id]
+    else:
+        raise RuntimeError("cell or poly_id must be specified!")
+
     if not touching_tiles:
         return False
 
@@ -50,16 +58,17 @@ def plot_indexing(icell: int, jcell: int) -> bool:
             )
         )
     ax.add_patch(it.box.as_patch(facecolor="none", edgecolor="black"))
-    ax.add_patch(
-        Box(
-            anchor=Point(
-                x=it.box.anchor.x + cell_w * icell,
-                y=it.box.anchor.y + cell_h * jcell,
-            ),
-            width=cell_w,
-            height=cell_h,
-        ).as_patch(facecolor="red", edgecolor="none", alpha=0.3)
-    )
+    for icell, jcell in cells:
+        ax.add_patch(
+            Box(
+                anchor=Point(
+                    x=it.box.anchor.x + cell_w * icell,
+                    y=it.box.anchor.y + cell_h * jcell,
+                ),
+                width=cell_w,
+                height=cell_h,
+            ).as_patch(facecolor="red", edgecolor="none", alpha=0.3)
+        )
     it.box.resized(1.05).fit_axes(ax)
     fig.savefig("indexed_tiling.png")
     return True
@@ -69,9 +78,13 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--animate", action="store_true")
 args = parser.parse_args()
 if args.animate:
-    for icell in range(it.index_bins[0]):
-        for jcell in range(it.index_bins[0]):
-            if plot_indexing(icell, jcell):
-                time.sleep(1.0)
+    # for icell in range(it.index_bins[0]):
+    #     for jcell in range(it.index_bins[0]):
+    #         if plot_indexing(cell=(icell, jcell)):
+    #             time.sleep(1.0)
+    for poly_id in range(len(it.tiles)):
+        plot_indexing(poly_id=poly_id)
+        time.sleep(1.0)
 else:
-    plot_indexing(6, 7)
+    # plot_indexing(cell=(6, 7))
+    plot_indexing(poly_id=0)
