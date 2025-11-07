@@ -1,5 +1,9 @@
+## Demo
+![poc](poc.png)
+
+## Ideas
 - Penrose tilings
-- Aperiodic 1-shape tiling (?)
+- Aperiodic monotile options
 - random points' Voronoi diagram
 - random line ensemble intersections
 - world maps, any other fun map e.g. a super gerrymandered maps from US

@@ -79,13 +79,17 @@ if __name__ == "__main__":
 
     t1 = time.time()
     axes[0].hist2d(x, y, bins=bins, cmap=cmap)
+    axes[0].set_title("Regular hist2d")
     t2 = time.time()
     funbin(axes[1], x, y, tiling=penrose_P3(bins, bins, random_seed=1312), cmap=cmap)
+    axes[1].set_title("Penrose P3 tiling")
     t3 = time.time()
     voronoi_points = bins**2
     funbin(axes[2], x, y, tiling=voronoi(points=voronoi_points), cmap=cmap)
+    axes[2].set_title(f"Voronoi diagram of {voronoi_points} random points")
     t4 = time.time()
     pc = funbin(axes[3], x, y, tiling=aperiodic_monotile(niter=3), cmap=cmap, spatial_indexing=True)
+    axes[3].set_title("Aperioric monotile (WIP)")
     t5 = time.time()
 
     print(f"Regular hist: {t2 - t1:.3f} sec")
