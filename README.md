@@ -1,5 +1,5 @@
 ## Demo
-![poc](poc.png)
+![poc](media/demo.png)
 
 ## Ideas
 - Penrose tilings
