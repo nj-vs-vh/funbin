@@ -9,7 +9,7 @@ from matplotlib.collections import PolyCollection
 from matplotlib.colors import Colormap, Normalize
 
 from funbin.einstein import aperiodic_monotile
-from funbin.models import Box, IndexedTiling, Point, Polygon, fitted_to_box
+from funbin.geometry import Box, IndexedTiling, Point, Polygon, fitted_to_box
 from funbin.penrose import penrose_P3
 from funbin.voronoi import voronoi
 

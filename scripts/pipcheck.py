@@ -5,7 +5,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 
 from funbin.einstein import aperiodic_monotile
-from funbin.models import Box, Point, fitted_to_box
+from funbin.geometry import Box, Point, fitted_to_box
 
 points = np.random.random(size=(300, 2))
 box = Box.bounding(points).resized(1.1)

@@ -2,7 +2,7 @@ import random
 
 from pynrose import Grid, Tiling, Vector
 
-from funbin.models import Box, Polygon
+from funbin.geometry import Box, Polygon
 
 
 def penrose_P3(n_horiz: int, n_vert: int, random_seed: int | None = None) -> list[Polygon]:

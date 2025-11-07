@@ -6,7 +6,7 @@ from matplotlib.collections import PolyCollection
 from matplotlib.lines import Line2D
 
 from funbin.einstein import aperiodic_monotile
-from funbin.models import Box, IndexedTiling, Point
+from funbin.geometry import Box, IndexedTiling, Point
 
 it = IndexedTiling.from_polygons(
     # polygons=penrose_P3(25, 25, random_seed=161),

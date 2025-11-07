@@ -3,7 +3,7 @@ from matplotlib import pyplot as plt
 from matplotlib.collections import PolyCollection
 
 from funbin.einstein import aperiodic_monotile
-from funbin.models import Box
+from funbin.geometry import Box
 
 # points = np.random.random(size=(30, 2)) * 2
 # polys = voronoi(points)

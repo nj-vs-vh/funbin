@@ -14,7 +14,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 from matplotlib.collections import PolyCollection
 
-from funbin.models import Box, Point, Polygon
+from funbin.geometry import Box, Point, Polygon
 
 
 @dataclass(frozen=True)

@@ -1,7 +1,7 @@
 import numpy as np
 import shapely
 
-from funbin.models import Box, Polygon
+from funbin.geometry import Box, Polygon
 
 
 def voronoi(points: int | np.ndarray) -> list[Polygon]:
