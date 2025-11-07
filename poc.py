@@ -11,7 +11,6 @@ from matplotlib.colors import Colormap, Normalize
 from funbin.einstein import aperiodic_monotile
 from funbin.models import Box, IndexedTiling, Point, Polygon, fitted_to_box
 from funbin.penrose import penrose_P3
-from funbin.voronoi import voronoi
 
 
 def funbin(
@@ -24,6 +23,7 @@ def funbin(
     cmap: str | Colormap = "viridis",
     norm: str | Normalize = "linear",
     density: bool = True,
+    spatial_indexing: bool = True,
     **poly_coll_kw,
 ) -> PolyCollection:
     assert x.ndim == 1
@@ -32,15 +32,24 @@ def funbin(
 
     samples_bbox = Box.bounding(samples)
     tiling = fitted_to_box(tiling, samples_bbox)
-    index_bins = int(round(math.sqrt(len(tiling))))
-    indexed_tiling = IndexedTiling.from_polygons(tiling, bins=(index_bins, index_bins))
 
     weight_per_tile = [0 for _ in tiling]
-    for sample, weight in zip(samples, weights or itertools.repeat(1.0 / samples.shape[0])):
-        if tile_id := indexed_tiling.lookup_tile_id(Point(*sample)):
-            weight_per_tile[tile_id] += weight
 
-    # poly_coll_kw.setdefault("edgecolors", "face")
+    if spatial_indexing:
+        index_bins = int(round(math.sqrt(len(tiling))))
+        indexed_tiling = IndexedTiling.from_polygons(tiling, bins=(index_bins, index_bins))
+        for sample, weight in zip(samples, weights or itertools.repeat(1.0 / samples.shape[0])):
+            if tile_id := indexed_tiling.lookup_tile_id(Point(*sample)):
+                weight_per_tile[tile_id] += weight
+    else:
+        for sample, weight in zip(samples, weights or itertools.repeat(1.0 / samples.shape[0])):
+            p = Point(*sample)
+            for tile_id, poly in enumerate(tiling):
+                if poly.includes(p):
+                    weight_per_tile[tile_id] += weight
+                    break
+
+    poly_coll_kw.setdefault("edgecolors", "face")
     pc = PolyCollection([p.verts for p in tiling], **poly_coll_kw)
     pc.set_array([tile_weight / (poly.area if density else 1.0) for tile_weight, poly in zip(weight_per_tile, tiling)])
     pc.set_cmap(cmap)
@@ -72,9 +81,12 @@ if __name__ == "__main__":
     funbin(axes[1], x, y, tiling=penrose_P3(bins, bins, random_seed=1312), cmap=cmap)
     t3 = time.time()
     voronoi_points = bins**2
-    funbin(axes[2], x, y, tiling=voronoi(points=voronoi_points), cmap=cmap)
+    # funbin(axes[2], x, y, tiling=voronoi(points=voronoi_points), cmap=cmap)
+    pc = funbin(axes[2], x, y, tiling=aperiodic_monotile(niter=2), cmap=cmap, spatial_indexing=False)
+    fig.colorbar(pc, ax=axes[2])
     t4 = time.time()
-    funbin(axes[3], x, y, tiling=aperiodic_monotile(niter=1), cmap=cmap)
+    pc = funbin(axes[3], x, y, tiling=aperiodic_monotile(niter=2), cmap=cmap, spatial_indexing=True)
+    fig.colorbar(pc, ax=axes[3])
     t5 = time.time()
 
     print(f"Regular hist: {t2 - t1:.3f} sec")

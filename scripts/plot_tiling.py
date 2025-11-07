@@ -4,8 +4,6 @@ from matplotlib.collections import PolyCollection
 
 from funbin.einstein import aperiodic_monotile
 from funbin.models import Box
-from funbin.penrose import penrose_P3
-from funbin.voronoi import voronoi
 
 # points = np.random.random(size=(30, 2)) * 2
 # polys = voronoi(points)
