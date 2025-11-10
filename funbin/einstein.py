@@ -1,5 +1,5 @@
 """
-Aperiodic monotile generation.
+Aperiodic monotile (einstein = ein Stein, German for "one stone") generation.
 
 A loose Python port of a demo webpage (https://cs.uwaterloo.ca/~csk/hat/h7h8.html)
 accompanying the original paper "An aperiodic monotile" by David Smith, Joseph Samuel Myers,

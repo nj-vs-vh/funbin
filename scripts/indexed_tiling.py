@@ -6,9 +6,9 @@ from matplotlib.collections import PolyCollection
 from matplotlib.lines import Line2D
 
 from funbin.einstein import aperiodic_monotile
-from funbin.geometry import Box, IndexedTiling, Point
+from funbin.geometry import Box, Point, SpatialIndex
 
-it = IndexedTiling.from_polygons(
+it = SpatialIndex.from_polygons(
     # polygons=penrose_P3(25, 25, random_seed=161),
     polygons=aperiodic_monotile(niter=2),
     bins=(15, 15),
@@ -19,10 +19,10 @@ def plot_indexing(cell: tuple[int, int] | None = None, poly_id: int | None = Non
     fig, ax = plt.subplots()
 
     if cell is not None:
-        touching_tiles = it.indexed_tiles[cell[0]][cell[1]]
+        touching_tiles = it.items_in_bin[cell[0]][cell[1]]
         cells = [cell]
     elif poly_id is not None:
-        cells = it.tile_index_bins[poly_id]
+        cells = it.item_bins[poly_id]
         touching_tiles = [poly_id]
     else:
         raise RuntimeError("cell or poly_id must be specified!")
@@ -32,14 +32,14 @@ def plot_indexing(cell: tuple[int, int] | None = None, poly_id: int | None = Non
 
     ax.add_collection(
         PolyCollection(
-            [p.verts for p in it.tiles],
-            facecolors=["blue" if i in touching_tiles else "none" for i in range(len(it.tiles))],
+            [p.verts for p in it.items],
+            facecolors=["blue" if i in touching_tiles else "none" for i in range(len(it.items))],
             edgecolors="darkgray",
         )
     )
 
-    cell_w, cell_h = it.index_cell_size
-    for i in range(1, it.index_bins[0]):
+    cell_w, cell_h = it.cell_size
+    for i in range(1, it.bins[0]):
         ax.add_line(
             Line2D(
                 xdata=[it.box.anchor.x + i * cell_w] * 2,
@@ -48,7 +48,7 @@ def plot_indexing(cell: tuple[int, int] | None = None, poly_id: int | None = Non
                 linewidth=0.3,
             )
         )
-    for j in range(1, it.index_bins[1]):
+    for j in range(1, it.bins[1]):
         ax.add_line(
             Line2D(
                 xdata=[it.box.anchor.x, it.box.upper_right.x],
@@ -82,7 +82,7 @@ if args.animate:
     #     for jcell in range(it.index_bins[0]):
     #         if plot_indexing(cell=(icell, jcell)):
     #             time.sleep(1.0)
-    for poly_id in range(len(it.tiles)):
+    for poly_id in range(len(it.items)):
         plot_indexing(poly_id=poly_id)
         time.sleep(1.0)
 else:

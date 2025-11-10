@@ -2,6 +2,7 @@ import functools
 import itertools
 import math
 from dataclasses import dataclass
+from typing import Iterable
 
 import numpy as np
 from matplotlib.axes import Axes
@@ -14,25 +15,25 @@ class Point:
     x: float
     y: float
 
-    def __add__(self, other):
+    def __add__(self, other: "Point"):
         if isinstance(other, Point):
             return Point(self.x + other.x, self.y + other.y)
         return NotImplemented
 
-    def __sub__(self, other):
+    def __sub__(self, other: "Point"):
         if isinstance(other, Point):
             return Point(self.x - other.x, self.y - other.y)
         return NotImplemented
 
-    def __mul__(self, scalar):
+    def __mul__(self, scalar: int | float):
         if isinstance(scalar, (int, float)):
             return Point(self.x * scalar, self.y * scalar)
         return NotImplemented
 
-    def __rmul__(self, scalar):
+    def __rmul__(self, scalar: int | float):
         return self.__mul__(scalar)
 
-    def __truediv__(self, scalar):
+    def __truediv__(self, scalar: int | float):
         if isinstance(scalar, (int, float)):
             return Point(self.x / scalar, self.y / scalar)
         return NotImplemented
@@ -40,12 +41,28 @@ class Point:
     def __repr__(self):
         return f"({self.x:.2f}, {self.y:.2f})"
 
+    def dot(self, other: "Point") -> float:
+        if isinstance(other, Point):
+            return self.x * other.x + self.y * other.y
+        return NotImplemented
+
+    @functools.cached_property
+    def sqabs(self) -> float:
+        return self.dot(self)
+
+    @functools.cached_property
+    def abs(self) -> float:
+        return math.sqrt(self.sqabs)
+
 
 def is_ccw_order(A: Point, B: Point, C: Point) -> bool:
     return (C.y - A.y) * (B.x - A.x) > (B.y - A.y) * (C.x - A.x)
 
 
-def do_intersect(AB: tuple[Point, Point], CD: tuple[Point, Point]) -> bool:
+LineSegment = tuple[Point, Point]
+
+
+def do_intersect(AB: LineSegment, CD: LineSegment) -> bool:
     """https://bryceboe.com/2006/10/23/line-segment-intersection-algorithm"""
     A, B = AB
     C, D = CD
@@ -62,11 +79,13 @@ class Box:
         return f"Box({self.anchor}, w={self.width:.2f}, h={self.height:.2f})"
 
     @staticmethod
-    def bounding(points: np.ndarray) -> "Box":
-        xmin = np.min(points[:, 0])
-        xmax = np.max(points[:, 0])
-        ymin = np.min(points[:, 1])
-        ymax = np.max(points[:, 1])
+    def bounding(points: np.ndarray | Iterable[Point]) -> "Box":
+        points_arr = points if isinstance(points, np.ndarray) else np.array([(p.x, p.y) for p in points])
+
+        xmin = np.min(points_arr[:, 0])
+        xmax = np.max(points_arr[:, 0])
+        ymin = np.min(points_arr[:, 1])
+        ymax = np.max(points_arr[:, 1])
         return Box(
             anchor=Point(xmin, ymin),
             width=xmax - xmin,
@@ -101,17 +120,17 @@ class Box:
         )
 
     @functools.cached_property
+    def vertices(self) -> list[Point]:
+        return [
+            Point(self.anchor.x, self.anchor.y),
+            Point(self.anchor.x, self.anchor.y + self.height),
+            Point(self.anchor.x + self.width, self.anchor.y + self.height),
+            Point(self.anchor.x + self.width, self.anchor.y),
+        ]
+
+    @functools.cached_property
     def as_polygon(self) -> "Polygon":
-        return Polygon(
-            np.array(
-                [
-                    (self.anchor.x, self.anchor.y),
-                    (self.anchor.x, self.anchor.y + self.height),
-                    (self.anchor.x + self.width, self.anchor.y + self.height),
-                    (self.anchor.x + self.width, self.anchor.y),
-                ]
-            )
-        )
+        return Polygon(np.array([(v.x, v.y) for v in self.vertices]))
 
     def includes(self, p: Point) -> bool:
         return self.anchor.x <= p.x <= self.upper_right.x and self.anchor.y <= p.y <= self.upper_right.y
@@ -142,9 +161,16 @@ class Polygon:
     verts: np.ndarray  # (nvert, 2)
 
     @functools.cached_property
+    def vertices(self) -> list[Point]:
+        return [Point(*coords) for coords in self.verts]
+
+    @functools.cached_property
     def edge_endpoints(self) -> list[Point]:
-        vert_points = [Point(*coords) for coords in self.verts]
-        return vert_points + [vert_points[0]]
+        return self.vertices + [self.vertices[0]]
+
+    @property
+    def edges(self) -> Iterable[LineSegment]:
+        return itertools.pairwise(self.edge_endpoints)
 
     @functools.cached_property
     def centroid(self) -> Point:
@@ -164,18 +190,22 @@ class Polygon:
             return False
 
         ray = (self.point_outside, p)
-        intersections = sum(int(do_intersect(ray, edge)) for edge in itertools.pairwise(self.edge_endpoints))
+        intersections = sum(int(do_intersect(ray, edge)) for edge in self.edges)
         res = intersections % 2 == 1
         return res
 
     @functools.cached_property
     def area(self) -> float:
-        return 0.5 * abs(sum((p1.x - p2.x) * (p1.y + p2.y) for (p1, p2) in itertools.pairwise(self.edge_endpoints)))
+        return 0.5 * abs(sum((p1.x - p2.x) * (p1.y + p2.y) for (p1, p2) in self.edges))
 
     @staticmethod
     def from_rhombus(r: Rhombus) -> "Polygon":
         vertices: list[RhombusVertex] = r.vertices()
         return Polygon(np.array([(v.coordinate.x, v.coordinate.y) for v in vertices]))
+
+    @staticmethod
+    def from_points(points: list[Point]) -> "Polygon":
+        return Polygon(np.array([(v.x, v.y) for v in points]))
 
     def moved(self, from_: Box, to: Box) -> "Polygon":
         x = to.anchor.x + (self.verts[:, 0] - from_.anchor.x) * to.width / from_.width
@@ -194,52 +224,96 @@ def fitted_to_box(tiling: list[Polygon], box: Box) -> list[Polygon]:
 
 
 @dataclass(frozen=True)
-class IndexedTiling:
-    tiles: list[Polygon]
+class SpatialIndex:
+    items: list[Polygon | LineSegment]
 
     box: Box
-    index_bins: tuple[int, int]
-    indexed_tiles: list[list[list[int]]]
-    tile_index_bins: list[list[tuple[int, int]]]
+    bins: tuple[int, int]
+    items_in_bin: list[list[list[int]]]
+    item_bins: list[list[tuple[int, int]]]
+
+    def append(self, item: Polygon | LineSegment) -> None:
+        self.items.append(item)
+        self.item_bins.append([])
+        id = len(self.items) - 1
+        touched_i: list[int] = []
+        touched_j: list[int] = []
+        item_bbox = Box.bounding_poly(item) if isinstance(item, Polygon) else Box.bounding(item)
+        for vert in item_bbox.vertices:
+            touched_i.append(math.floor((vert.x - self.box.anchor.x) / self.cell_w))
+            touched_j.append(math.floor((vert.y - self.box.anchor.y) / self.cell_h))
+        for i in range(min(touched_i), max(touched_i) + 1):
+            for j in range(min(touched_j), max(touched_j) + 1):
+                self.items_in_bin[i][j].append(id)
+                self.item_bins[id].append((i, j))
+
+    # def pop(self, idx: int) -> Polygon | LineSegment:
+    #     item = self.items.pop(idx)
+    #     item_bins = self.item_bins.pop(idx)
+    #     for i, j in item_bins:
+    #         self.items_in_bin[i][j].remove(idx)
+    #     for row in self.items_in_bin:
+    #         for j in range(len(row)):
+    #             row[j] = [id - (0 if id <= idx else 1) for id in row[j]]
+    #     return item
 
     @staticmethod
-    def from_polygons(polygons: list[Polygon], bins: tuple[int, int]):
-        box = Box.bounding_all(polygons).resized(1.01)
-        x_bins, y_bins = bins
-        cell_w = box.width / x_bins
-        cell_h = box.height / y_bins
-        indexed_tiles: list[list[list[int]]] = [[[] for _ in range(y_bins)] for _ in range(x_bins)]
-        tile_index_bins: list[list[tuple[int, int]]] = [[] for _ in polygons]
-        for id, poly in enumerate(polygons):
-            touched_is = []
-            touched_js = []
-            for vert in poly.bbox.as_polygon.verts:
-                touched_is.append(math.floor((vert[0] - box.anchor.x) / cell_w))
-                touched_js.append(math.floor((vert[1] - box.anchor.y) / cell_h))
-            for i in range(min(touched_is), max(touched_is) + 1):
-                for j in range(min(touched_js), max(touched_js) + 1):
-                    indexed_tiles[i][j].append(id)
-                    tile_index_bins[id].append((i, j))
-        return IndexedTiling(
-            tiles=polygons.copy(),
-            box=box,
-            index_bins=bins,
-            indexed_tiles=indexed_tiles,
-            tile_index_bins=tile_index_bins,
+    def _build(box: Box, items: list[Polygon | LineSegment], bins: tuple[int, int] | int):
+        if isinstance(bins, tuple):
+            x_bins, y_bins = bins
+        else:
+            x_bins = y_bins = int(round(math.sqrt(bins)))
+        res = SpatialIndex(
+            items=[],
+            box=box.resized(1.01),  # safety margin for outermost points
+            bins=(x_bins, y_bins),
+            items_in_bin=[[[] for _ in range(y_bins)] for _ in range(x_bins)],
+            item_bins=[],
+        )
+        for item in items:
+            res.append(item)
+        return res
+
+    @staticmethod
+    def from_polygons(polygons: list[Polygon], bins: tuple[int, int] | int):
+        return SpatialIndex._build(
+            box=Box.bounding_all(polygons),
+            items=polygons.copy(),  # type: ignore
+            bins=bins,
+        )
+
+    @staticmethod
+    def from_line_segments(line_segments: list[LineSegment], bins: tuple[int, int] | int):
+        return SpatialIndex._build(
+            box=Box.bounding(itertools.chain.from_iterable(line_segments)),
+            items=line_segments.copy(),  # type: ignore
+            bins=bins,
         )
 
     def lookup_tile_id(self, p: Point) -> int | None:
         if not self.box.includes(p):
             return None
-        cell_w, cell_h = self.index_cell_size
+        cell_w, cell_h = self.cell_size
         icell = math.floor((p.x - self.box.anchor.x) / cell_w)
         jcell = math.floor((p.y - self.box.anchor.y) / cell_h)
-        for candidate_id in self.indexed_tiles[icell][jcell]:
-            if self.tiles[candidate_id].includes(p):
+        for candidate_id in self.items_in_bin[icell][jcell]:
+            candidate = self.items[candidate_id]
+            if isinstance(candidate, Polygon) and candidate.includes(p):
                 return candidate_id
         else:
             return None
 
+    def is_inside_tiles(self, p: Point) -> bool:
+        return self.lookup_tile_id(p) is not None
+
     @functools.cached_property
-    def index_cell_size(self) -> tuple[float, float]:
-        return (self.box.width / self.index_bins[0], self.box.height / self.index_bins[1])
+    def cell_w(self) -> float:
+        return self.box.width / self.bins[0]
+
+    @functools.cached_property
+    def cell_h(self) -> float:
+        return self.box.height / self.bins[1]
+
+    @functools.cached_property
+    def cell_size(self) -> tuple[float, float]:
+        return self.cell_w, self.cell_h

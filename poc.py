@@ -1,5 +1,4 @@
 import itertools
-import math
 import time
 
 import numpy as np
@@ -9,7 +8,7 @@ from matplotlib.collections import PolyCollection
 from matplotlib.colors import Colormap, Normalize
 
 from funbin.einstein import aperiodic_monotile
-from funbin.geometry import Box, IndexedTiling, Point, Polygon, fitted_to_box
+from funbin.geometry import Box, Point, Polygon, SpatialIndex, fitted_to_box
 from funbin.penrose import penrose_P3
 from funbin.voronoi import voronoi
 
@@ -37,8 +36,7 @@ def funbin(
     weight_per_tile = [0 for _ in tiling]
 
     if spatial_indexing:
-        index_bins = int(round(math.sqrt(len(tiling))))
-        indexed_tiling = IndexedTiling.from_polygons(tiling, bins=(index_bins, index_bins))
+        indexed_tiling = SpatialIndex.from_polygons(tiling, bins=len(tiling))
         for sample, weight in zip(samples, weights or itertools.repeat(1.0 / samples.shape[0])):
             tile_id = indexed_tiling.lookup_tile_id(Point(*sample))
             if tile_id is not None:
