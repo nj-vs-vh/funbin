@@ -54,6 +54,9 @@ class Point:
     def abs(self) -> float:
         return math.sqrt(self.sqabs)
 
+    def normalized(self) -> "Point":
+        return self / self.abs
+
 
 def is_ccw_order(A: Point, B: Point, C: Point) -> bool:
     return (C.y - A.y) * (B.x - A.x) > (B.y - A.y) * (C.x - A.x)
@@ -217,10 +220,37 @@ class Polygon:
         upper_right = np.array([to.upper_right.x, to.upper_right.y])
         return Polygon(verts=np.minimum(np.maximum(self.verts, anchor), upper_right))
 
+    def scaled(self, a: float) -> "Polygon":
+        return Polygon(verts=a * self.verts)
+
+    def translated(self, vec: Point) -> "Polygon":
+        return Polygon(self.verts + np.array([[vec.x, vec.y]]))
+
+    def rotated(self, rot: float | np.ndarray) -> "Polygon":
+        if isinstance(rot, float):
+            rm = rotation_matrix(rot)
+        else:
+            rm = rot
+        return Polygon(verts=np.matvec(rm, self.verts))
+
+
+def rotation_matrix(angle: float) -> np.ndarray:
+    return np.array(
+        [
+            [np.cos(angle), -np.sin(angle)],
+            [np.sin(angle), np.cos(angle)],
+        ]
+    )
+
 
 def fitted_to_box(tiling: list[Polygon], box: Box) -> list[Polygon]:
     orig = Box.bounding_all(tiling)
     return [p.moved(from_=orig, to=box) for p in tiling]
+
+
+def rotated(tiling: list[Polygon], angle: float) -> list[Polygon]:
+    rm = rotation_matrix(angle)
+    return [p.rotated(rm) for p in tiling]
 
 
 @dataclass(frozen=True)
@@ -317,3 +347,73 @@ class SpatialIndex:
     @functools.cached_property
     def cell_size(self) -> tuple[float, float]:
         return self.cell_w, self.cell_h
+
+    @functools.cached_property
+    def border_edges(self) -> list[LineSegment]:
+        eps = 1e-6
+        res: list[LineSegment] = []
+        for t in self.items:
+            if not isinstance(t, Polygon):
+                continue
+            for start, end in t.edges:
+                vec = end - start
+                small_normal = eps * Point(vec.y, -vec.x).normalized()
+                middle = start + vec / 2
+                if self.is_inside_tiles(middle + small_normal) != self.is_inside_tiles(middle - small_normal):
+                    res.append((start, end))
+        return res
+
+    def is_inscribed(self, poly: Polygon) -> bool:
+        return all(self.is_inside_tiles(p) for p in poly.vertices) and all(
+            not any(do_intersect(edge, border_edge) for border_edge in self.border_edges) for edge in poly.edges
+        )
+
+
+def rectanglize(tiles: list[Polygon]) -> list[Polygon]:
+    angle = np.random.random() * 2 * math.pi
+    tiles = rotated(tiles, angle=angle)
+    tiles_index = SpatialIndex.from_polygons(tiles, bins=len(tiles) * 5)
+
+    box = Box.bounding_all(tiles)
+
+    while True:
+        center = Point(
+            x=box.anchor.x + np.random.random() * box.width,
+            y=box.anchor.y + np.random.random() * box.height,
+        )
+        if tiles_index.is_inside_tiles(center):
+            break
+
+    # first, we find a reasonably inscribed square
+    side_init = box.width / 2
+
+    side = side_init
+    side_step = side_init
+    unit_square = Polygon.from_points(
+        [
+            Point(-1.0, -1.0),
+            Point(-1.0, 1.0),
+            Point(1.0, 1.0),
+            Point(1.0, -1.0),
+        ]
+    ).scaled(0.5)
+    box_rect: Polygon | None = None
+    for iter in itertools.count():
+        box_rect = unit_square.scaled(side).translated(center)
+        if tiles_index.is_inscribed(box_rect):
+            if iter > 10:
+                break
+            else:
+                side += side_step
+        else:
+            side -= side_step
+        side_step /= 2
+
+    assert box_rect is not None
+
+    clip_to_box = Box(anchor=box_rect.vertices[0], width=side, height=side)
+    res = [poly.clipped(clip_to_box) for poly in tiles]
+    res = [p for p in res if p.area > 1e-8]
+
+    # TODO: grow square into rectangle
+    return res
