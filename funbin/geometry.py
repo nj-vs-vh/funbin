@@ -72,6 +72,20 @@ def do_intersect(AB: LineSegment, CD: LineSegment) -> bool:
     return is_ccw_order(A, C, D) != is_ccw_order(B, C, D) and is_ccw_order(A, B, C) != is_ccw_order(A, B, D)
 
 
+def segment_intersection(AB: LineSegment, CD: LineSegment) -> Point | None:
+    if not do_intersect(AB, CD):
+        return None
+    A, B = AB
+    C, D = CD
+    denom = (A.x - B.x) * (C.y - D.y) - (A.y - B.y) * (C.x - D.x)
+    if abs(denom) < 1e-10:
+        return None
+    return Point(
+        x=((A.x * B.y - B.x * A.y) * (C.x - D.x) - (C.x * D.y - D.x * C.y) * (A.x - B.x)) / denom,
+        y=((A.x * B.y - B.x * A.y) * (C.y - D.y) - (C.x * D.y - D.x * C.y) * (A.y - B.y)) / denom,
+    )
+
+
 @dataclass(frozen=True)
 class Box:
     anchor: Point  # left bottom
@@ -109,8 +123,36 @@ class Box:
         return Point(self.anchor.x + self.width / 2, self.anchor.y + self.height / 2)
 
     @functools.cached_property
+    def left(self) -> float:
+        return self.anchor.x
+
+    @functools.cached_property
+    def right(self) -> float:
+        return self.anchor.x + self.width
+
+    @functools.cached_property
+    def bottom(self) -> float:
+        return self.anchor.y
+
+    @functools.cached_property
+    def top(self) -> float:
+        return self.anchor.y + self.height
+
+    @functools.cached_property
+    def lower_left(self) -> Point:
+        return self.anchor
+
+    @functools.cached_property
+    def lower_right(self) -> Point:
+        return Point(self.right, self.bottom)
+
+    @functools.cached_property
+    def upper_left(self) -> Point:
+        return Point(self.left, self.top)
+
+    @functools.cached_property
     def upper_right(self) -> Point:
-        return Point(self.anchor.x + self.width, self.anchor.y + self.height)
+        return Point(self.right, self.top)
 
     def resized(self, factor: float) -> "Box":
         return Box(
@@ -305,11 +347,11 @@ class SpatialIndex:
         return res
 
     @staticmethod
-    def from_polygons(polygons: list[Polygon], bins: tuple[int, int] | int):
+    def from_polygons(polygons: list[Polygon], bins: tuple[int, int] | int | None = None):
         return SpatialIndex._build(
             box=Box.bounding_all(polygons),
             items=polygons.copy(),  # type: ignore
-            bins=bins,
+            bins=bins or len(polygons),
         )
 
     @staticmethod
@@ -369,24 +411,25 @@ class SpatialIndex:
         )
 
 
-def rectanglize(tiles: list[Polygon]) -> list[Polygon]:
-    angle = np.random.random() * 2 * math.pi
-    tiles = rotated(tiles, angle=angle)
+def rectanglize(tiles: list[Polygon], rotate: bool = True) -> list[Polygon]:
+    if rotate:
+        angle = np.random.random() * 2 * math.pi
+        tiles = rotated(tiles, angle=angle)
+
     tiles_index = SpatialIndex.from_polygons(tiles, bins=len(tiles) * 5)
 
-    box = Box.bounding_all(tiles)
+    bbox = Box.bounding_all(tiles)
 
     while True:
         center = Point(
-            x=box.anchor.x + np.random.random() * box.width,
-            y=box.anchor.y + np.random.random() * box.height,
+            x=bbox.anchor.x + np.random.random() * bbox.width,
+            y=bbox.anchor.y + np.random.random() * bbox.height,
         )
         if tiles_index.is_inside_tiles(center):
             break
 
     # first, we find a reasonably inscribed square
-    side_init = box.width / 2
-
+    side_init = bbox.width / 2
     side = side_init
     side_step = side_init
     unit_square = Polygon.from_points(
@@ -410,9 +453,30 @@ def rectanglize(tiles: list[Polygon]) -> list[Polygon]:
         side_step /= 2
 
     assert box_rect is not None
+    box = Box(anchor=box_rect.vertices[0], width=side, height=side)
 
-    clip_to_box = Box(anchor=box_rect.vertices[0], width=side, height=side)
-    res = [poly.clipped(clip_to_box) for poly in tiles]
+    # then, we stretch the square in all 4 direction to maximum inscribed size
+    top = Point(bbox.left, box.top), Point(bbox.right, box.top)
+    bot = Point(bbox.left, box.bottom), Point(bbox.right, box.bottom)
+    min_x_candidates = [
+        p.x
+        for p in itertools.chain.from_iterable(
+            [segment_intersection(box_side, edge) for edge in tiles_index.border_edges] for box_side in (top, bot)
+        )
+        if p is not None and p.x <= box.lower_left.x
+    ]
+    if min_x_candidates:
+        new_min_x = max(min_x_candidates)
+        box = Box(
+            anchor=Point(
+                x=new_min_x,
+                y=box.anchor.y,
+            ),
+            width=box.lower_right.x - new_min_x,
+            height=box.height,
+        )
+
+    res = [poly.clipped(box) for poly in tiles]
     res = [p for p in res if p.area > 1e-8]
 
     # TODO: grow square into rectangle
