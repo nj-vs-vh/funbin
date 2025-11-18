@@ -2,12 +2,13 @@ import functools
 import itertools
 import math
 from dataclasses import dataclass
-from typing import Iterable
+from typing import Callable, Iterable, TypeVar
 
 import numpy as np
 from matplotlib.axes import Axes
 from matplotlib.patches import Rectangle
 from pynrose import Rhombus, RhombusVertex
+from tqdm import trange
 
 
 @dataclass(frozen=True)
@@ -154,6 +155,34 @@ class Box:
     def upper_right(self) -> Point:
         return Point(self.right, self.top)
 
+    def stretched_left(self, new_left: float) -> "Box":
+        return Box(
+            anchor=Point(new_left, self.anchor.y),
+            width=self.lower_right.x - new_left,
+            height=self.height,
+        )
+
+    def stretched_right(self, new_right: float) -> "Box":
+        return Box(
+            anchor=self.anchor,
+            width=new_right - self.anchor.x,
+            height=self.height,
+        )
+
+    def stretched_up(self, new_top: float) -> "Box":
+        return Box(
+            anchor=self.anchor,
+            width=self.width,
+            height=new_top - self.anchor.y,
+        )
+
+    def stretched_down(self, new_bot: float) -> "Box":
+        return Box(
+            anchor=Point(self.anchor.x, new_bot),
+            width=self.width,
+            height=self.upper_left.y - new_bot,
+        )
+
     def resized(self, factor: float) -> "Box":
         return Box(
             anchor=Point(
@@ -276,6 +305,11 @@ class Polygon:
         return Polygon(verts=np.matvec(rm, self.verts))
 
 
+def clipped_to_box(tiles: list[Polygon], box: Box, eps: float = 1e-4) -> list[Polygon]:
+    res = [poly.clipped(box) for poly in tiles]
+    return [p for p in res if p.area > eps**2]
+
+
 def rotation_matrix(angle: float) -> np.ndarray:
     return np.array(
         [
@@ -290,12 +324,28 @@ def fitted_to_box(tiling: list[Polygon], box: Box) -> list[Polygon]:
     return [p.moved(from_=orig, to=box) for p in tiling]
 
 
-def rotated(tiling: list[Polygon], angle: float) -> list[Polygon]:
+def rotated_segment(ls: LineSegment, rm: np.ndarray) -> LineSegment:
+    coords = np.matvec(
+        rm,
+        np.array(
+            [
+                [ls[0].x, ls[0].y],
+                [ls[1].x, ls[1].y],
+            ]
+        ),
+    )
+    return tuple(Point(row[0], row[1]) for row in coords)  # type: ignore
+
+
+Rotatable = TypeVar("Rotatable", bound=Polygon | LineSegment)
+
+
+def rotated(items: list[Rotatable], angle: float) -> list[Rotatable]:
     rm = rotation_matrix(angle)
-    return [p.rotated(rm) for p in tiling]
+    return [item.rotated(rm) if isinstance(item, Polygon) else rotated_segment(item, rm) for item in items]  # type: ignore
 
 
-@dataclass(frozen=True)
+@dataclass
 class SpatialIndex:
     items: list[Polygon | LineSegment]
 
@@ -303,6 +353,8 @@ class SpatialIndex:
     bins: tuple[int, int]
     items_in_bin: list[list[list[int]]]
     item_bins: list[list[tuple[int, int]]]
+
+    border_edges_precomputed: list[LineSegment] | None = None
 
     def append(self, item: Polygon | LineSegment) -> None:
         self.items.append(item)
@@ -392,6 +444,8 @@ class SpatialIndex:
 
     @functools.cached_property
     def border_edges(self) -> list[LineSegment]:
+        if self.border_edges_precomputed is not None:
+            return self.border_edges_precomputed
         eps = 1e-6
         res: list[LineSegment] = []
         for t in self.items:
@@ -411,12 +465,76 @@ class SpatialIndex:
         )
 
 
-def rectanglize(tiles: list[Polygon], rotate: bool = True) -> list[Polygon]:
-    if rotate:
-        angle = np.random.random() * 2 * math.pi
-        tiles = rotated(tiles, angle=angle)
+def rectanglize_tiling(
+    tiles: list[Polygon],
+    target_bins: tuple[int, int],
+    rotate: bool = True,
+    max_tries: int = 100,
+    debug: bool = False,
+    border_edges_precomputed: list[LineSegment] | None = None,
+) -> list[Polygon]:
+    if border_edges_precomputed is not None:
+        border_edges = border_edges_precomputed
+    else:
+        print("Computing aux index...")
+        index = SpatialIndex.from_polygons(tiles, bins=len(tiles) * 10)
+        print("Computing border edges...")
+        border_edges = index.border_edges
+    if debug and border_edges_precomputed is None:
+        print(f"Computed border edges: {len(border_edges)}")
 
-    tiles_index = SpatialIndex.from_polygons(tiles, bins=len(tiles) * 5)
+    target_bins_x, target_bins_y = target_bins
+
+    best: tuple[list[Polygon], Box, float, float, float] | None = None
+    range_ = trange if debug else range
+    for i_try in range_(max_tries):
+        if rotate:
+            angle = np.random.random() * 2 * math.pi
+            tiles = rotated(tiles, angle=angle)
+            border_edges = rotated(border_edges, angle=angle)
+        else:
+            tiles = tiles
+            border_edges = border_edges
+        res, box = _try_rectanglize(tiles=tiles, border_edges=border_edges)
+        bin_ratio = box.width / box.height
+        bins_y = math.sqrt(len(res) / bin_ratio)
+        bins_x = bin_ratio * bins_y
+        score = 0.5 * (min(bins_x / target_bins_x, 1.0) + min(bins_y / target_bins_y, 1.0))
+        if best is None or score > best[-1]:
+            best = res, box, bins_x, bins_y, score
+        if bins_x > target_bins_x and bins_y > target_bins_y:
+            if debug:
+                print(f"Success on try #{i_try + 1}")
+            break
+    else:
+        if debug:
+            print(f"Not successful after {max_tries} tries")
+
+    assert best is not None
+    res, box, bins_x, bins_y, score = best
+    if debug:
+        print(f"Best rect found: {box}, bins: {bins_x}, {bins_y}, score={score}")
+
+    sub_width = box.width * min(1.0, target_bins_x / bins_x)
+    sub_height = box.height * min(1.0, target_bins_y / bins_y)
+    offset = Point(
+        x=np.random.random() * (box.width - sub_width),
+        y=np.random.random() * (box.height - sub_height),
+    )
+    sub_box = Box(
+        anchor=box.anchor + offset,
+        width=sub_width,
+        height=sub_height,
+    )
+    if debug:
+        print(f"Sub box: {sub_box}")
+
+    return clipped_to_box(res, sub_box)
+
+
+def _try_rectanglize(tiles: list[Polygon], border_edges: list[LineSegment]) -> tuple[list[Polygon], Box]:
+    tiles_index = SpatialIndex.from_polygons(tiles)
+    tiles_index.border_edges_precomputed = border_edges
 
     bbox = Box.bounding_all(tiles)
 
@@ -456,28 +574,56 @@ def rectanglize(tiles: list[Polygon], rotate: bool = True) -> list[Polygon]:
     box = Box(anchor=box_rect.vertices[0], width=side, height=side)
 
     # then, we stretch the square in all 4 direction to maximum inscribed size
-    top = Point(bbox.left, box.top), Point(bbox.right, box.top)
-    bot = Point(bbox.left, box.bottom), Point(bbox.right, box.bottom)
-    min_x_candidates = [
-        p.x
-        for p in itertools.chain.from_iterable(
-            [segment_intersection(box_side, edge) for edge in tiles_index.border_edges] for box_side in (top, bot)
-        )
-        if p is not None and p.x <= box.lower_left.x
-    ]
-    if min_x_candidates:
-        new_min_x = max(min_x_candidates)
-        box = Box(
-            anchor=Point(
-                x=new_min_x,
-                y=box.anchor.y,
-            ),
-            width=box.lower_right.x - new_min_x,
-            height=box.height,
+    border_edge_verts = set(itertools.chain.from_iterable(tiles_index.border_edges))
+
+    for is_horiz, is_neg in (
+        (True, True),
+        (False, False),
+        (True, False),
+        (False, True),
+    ):
+        is_correct_side: Callable[[Point], bool] = (  # noqa: E731
+            lambda p: (p.x <= box.left if is_neg else p.x >= box.right)
+            if is_horiz
+            else (p.y <= box.bottom if is_neg else p.y >= box.top)
         )
 
-    res = [poly.clipped(box) for poly in tiles]
-    res = [p for p in res if p.area > 1e-8]
+        if is_horiz:
+            box_sides = [
+                (Point(bbox.left, box.top), Point(bbox.right, box.top)),  # top
+                (Point(bbox.left, box.bottom), Point(bbox.right, box.bottom)),  # bot
+            ]
+        else:
+            box_sides = [
+                (Point(box.left, bbox.bottom), Point(box.left, bbox.top)),  # left
+                (Point(box.right, bbox.bottom), Point(box.right, bbox.top)),  # right
+            ]
 
-    # TODO: grow square into rectangle
-    return res
+        # intersection of "cutting" box sides with border edges
+        new_coord_candidates = [
+            p.x if is_horiz else p.y
+            for p in itertools.chain.from_iterable(
+                [segment_intersection(cutting_side, edge) for edge in tiles_index.border_edges]
+                for cutting_side in box_sides
+            )
+            if p is not None and is_correct_side(p)
+        ]
+        # intersection of sweeping box edge with vertices
+        new_coord_candidates.extend(
+            p.x if is_horiz else p.y
+            for p in border_edge_verts
+            if (box.bottom <= p.y <= box.top if is_horiz else box.left <= p.x <= box.right) and is_correct_side(p)
+        )
+        if new_coord_candidates:
+            new_coord = max(new_coord_candidates) if is_neg else min(new_coord_candidates)
+            match is_horiz, is_neg:
+                case (True, True):
+                    box = box.stretched_left(new_coord)
+                case (True, False):
+                    box = box.stretched_right(new_coord)
+                case (False, True):
+                    box = box.stretched_down(new_coord)
+                case (False, False):
+                    box = box.stretched_up(new_coord)
+
+    return clipped_to_box(tiles, box=box), box

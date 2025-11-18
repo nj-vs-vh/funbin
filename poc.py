@@ -8,7 +8,7 @@ from matplotlib.collections import PolyCollection
 from matplotlib.colors import Colormap, Normalize
 
 from funbin.einstein import aperiodic_monotile
-from funbin.geometry import Box, Point, Polygon, SpatialIndex, fitted_to_box
+from funbin.geometry import Box, Point, Polygon, SpatialIndex, fitted_to_box, rectanglize_tiling
 from funbin.penrose import penrose_P3
 from funbin.voronoi import voronoi
 
@@ -86,8 +86,10 @@ if __name__ == "__main__":
     funbin(axes[2], x, y, tiling=voronoi(points=voronoi_points), cmap=cmap)
     axes[2].set_title(f"Voronoi diagram of {voronoi_points} random points")
     t4 = time.time()
-    pc = funbin(axes[3], x, y, tiling=aperiodic_monotile(niter=3), cmap=cmap, spatial_indexing=True)
-    axes[3].set_title("Aperioric monotile (WIP)")
+    raw = aperiodic_monotile(niter=5)
+    tiling = rectanglize_tiling(raw, rotate=True, target_bins=(bins, bins), max_tries=30, debug=True)
+    pc = funbin(axes[3], x, y, tiling=tiling, cmap=cmap)
+    axes[3].set_title("Aperioric monotile")
     t5 = time.time()
 
     print(f"Regular hist: {t2 - t1:.3f} sec")

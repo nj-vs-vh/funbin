@@ -334,10 +334,6 @@ def aperiodic_monotile(
             a = alpha * shape_param
             b = alpha * (1 - shape_param)
 
-    # TODO:
-    # - find square box fully covered by the tiling and return it
-    # - check max size of box vs. niter and select niter internally
-
     return [p for p, _ in (s.H8 if construction == "H8" else s.H7).as_polygons(a, b)]
 
 
