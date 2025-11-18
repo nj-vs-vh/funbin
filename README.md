@@ -1,7 +1,9 @@
 ## Demo
+
 ![poc](media/demo.png)
 
 ## Ideas
+
 - Penrose tilings
 - Aperiodic monotile options
 - random points' Voronoi diagram
@@ -11,8 +13,11 @@
 - ???
 
 ## Refs:
+
 - [hat tiling with SAT solver](https://www.hgreer.com/HatTile/)
 - [very nice but very long article about P2, P3, hat](https://www.chiark.greenend.org.uk/~sgtatham/quasiblog/aperiodic-tilings/)
 - [spectre generation in python](https://github.com/shrx/spectre/tree/master)
 - [hats web app](https://cs.uwaterloo.ca/~csk/hat/h7h8.html)
 - [spectre web app](https://cs.uwaterloo.ca/~csk/spectre/app.html)
+- [detailed penrose tiling article](https://www.ams.org/publicoutreach/feature-column/fcarc-penrose)
+- [bob](https://scollins.net/penrose/)

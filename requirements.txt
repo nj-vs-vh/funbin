@@ -1,4 +1,5 @@
 matplotlib==3.10.7
 numpy==2.3.4
 pynrose==1.0.0
+tqdm==4.67.1
 # ruff==0.14.3
