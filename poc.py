@@ -9,7 +9,7 @@ from matplotlib.colors import Colormap, Normalize
 
 from funbin.einstein import aperiodic_monotile
 from funbin.geometry import Box, Point, Polygon, SpatialIndex, fitted_to_box, rectanglize_tiling
-from funbin.penrose import penrose_P3
+from funbin.penrose import penrose_P3_de_Brujin
 from funbin.voronoi import voronoi
 
 
@@ -79,7 +79,7 @@ if __name__ == "__main__":
     axes[0].hist2d(x, y, bins=bins, cmap=cmap)
     axes[0].set_title("Regular hist2d")
     t2 = time.time()
-    funbin(axes[1], x, y, tiling=penrose_P3(bins, bins, random_seed=1312), cmap=cmap)
+    funbin(axes[1], x, y, tiling=penrose_P3_de_Brujin(bins, bins, random_seed=1312), cmap=cmap)
     axes[1].set_title("Penrose P3 tiling")
     t3 = time.time()
     voronoi_points = bins**2

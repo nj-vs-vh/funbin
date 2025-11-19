@@ -4,11 +4,15 @@ import math
 from dataclasses import dataclass
 from typing import Callable, Iterable, TypeVar
 
+import matplotlib
 import numpy as np
 from matplotlib.axes import Axes
+from matplotlib.collections import PolyCollection
 from matplotlib.patches import Rectangle
 from pynrose import Rhombus, RhombusVertex
 from tqdm import trange
+
+DEFAULT_EPS_DISTANCE = 1e-6
 
 
 @dataclass(frozen=True)
@@ -58,6 +62,9 @@ class Point:
     def normalized(self) -> "Point":
         return self / self.abs
 
+    def is_close(self, other: "Point", sqeps: float = DEFAULT_EPS_DISTANCE**2) -> bool:
+        return (self - other).sqabs < sqeps
+
 
 def is_ccw_order(A: Point, B: Point, C: Point) -> bool:
     return (C.y - A.y) * (B.x - A.x) > (B.y - A.y) * (C.x - A.x)
@@ -71,6 +78,18 @@ def do_intersect(AB: LineSegment, CD: LineSegment) -> bool:
     A, B = AB
     C, D = CD
     return is_ccw_order(A, C, D) != is_ccw_order(B, C, D) and is_ccw_order(A, B, C) != is_ccw_order(A, B, D)
+
+
+def are_segments_close(ls1: LineSegment, ls2: LineSegment, eps: float = DEFAULT_EPS_DISTANCE) -> bool:
+    sqeps = eps**2
+    for A, B, C, D in (
+        (ls1[0], ls1[1], ls2[0], ls2[1]),
+        (ls1[1], ls1[0], ls2[0], ls2[1]),
+    ):
+        if A.is_close(C, sqeps) and B.is_close(D, sqeps):
+            return True
+    else:
+        return False
 
 
 def segment_intersection(AB: LineSegment, CD: LineSegment) -> Point | None:
@@ -278,7 +297,7 @@ class Polygon:
         return Polygon(np.array([(v.coordinate.x, v.coordinate.y) for v in vertices]))
 
     @staticmethod
-    def from_points(points: list[Point]) -> "Polygon":
+    def from_points(points: Iterable[Point]) -> "Polygon":
         return Polygon(np.array([(v.x, v.y) for v in points]))
 
     def moved(self, from_: Box, to: Box) -> "Polygon":
@@ -305,7 +324,7 @@ class Polygon:
         return Polygon(verts=np.matvec(rm, self.verts))
 
 
-def clipped_to_box(tiles: list[Polygon], box: Box, eps: float = 1e-4) -> list[Polygon]:
+def clipped_to_box(tiles: list[Polygon], box: Box, eps: float = DEFAULT_EPS_DISTANCE) -> list[Polygon]:
     res = [poly.clipped(box) for poly in tiles]
     return [p for p in res if p.area > eps**2]
 
@@ -345,6 +364,18 @@ def rotated(items: list[Rotatable], angle: float) -> list[Rotatable]:
     return [item.rotated(rm) if isinstance(item, Polygon) else rotated_segment(item, rm) for item in items]  # type: ignore
 
 
+JET = matplotlib.colormaps["jet"]
+
+
+def as_poly_collection(polys: list[Polygon], *, randomize_color: bool = False, **poly_coll_kw) -> PolyCollection:
+    poly_coll_kw.setdefault("edgecolors", "gray")
+    if randomize_color:
+        poly_coll_kw.setdefault("facecolors", [JET(np.random.random()) for _ in polys])
+    else:
+        poly_coll_kw.setdefault("facecolors", "none")
+    return PolyCollection([p.verts for p in polys], **poly_coll_kw)
+
+
 @dataclass
 class SpatialIndex:
     items: list[Polygon | LineSegment]
@@ -356,13 +387,15 @@ class SpatialIndex:
 
     border_edges_precomputed: list[LineSegment] | None = None
 
-    def append(self, item: Polygon | LineSegment) -> None:
+    def append(self, item: Polygon | LineSegment, bbox_resize_factor: float | None = None) -> None:
         self.items.append(item)
         self.item_bins.append([])
         id = len(self.items) - 1
         touched_i: list[int] = []
         touched_j: list[int] = []
         item_bbox = Box.bounding_poly(item) if isinstance(item, Polygon) else Box.bounding(item)
+        if bbox_resize_factor is not None:
+            item_bbox = item_bbox.resized(bbox_resize_factor)
         for vert in item_bbox.vertices:
             touched_i.append(math.floor((vert.x - self.box.anchor.x) / self.cell_w))
             touched_j.append(math.floor((vert.y - self.box.anchor.y) / self.cell_h))
@@ -382,7 +415,12 @@ class SpatialIndex:
     #     return item
 
     @staticmethod
-    def _build(box: Box, items: list[Polygon | LineSegment], bins: tuple[int, int] | int):
+    def _build(
+        box: Box,
+        items: list[Polygon | LineSegment],
+        bins: tuple[int, int] | int,
+        bbox_resize_factor: float | None = None,
+    ):
         if isinstance(bins, tuple):
             x_bins, y_bins = bins
         else:
@@ -395,15 +433,20 @@ class SpatialIndex:
             item_bins=[],
         )
         for item in items:
-            res.append(item)
+            res.append(item, bbox_resize_factor=bbox_resize_factor)
         return res
 
     @staticmethod
-    def from_polygons(polygons: list[Polygon], bins: tuple[int, int] | int | None = None):
+    def from_polygons(
+        polygons: list[Polygon],
+        bins: tuple[int, int] | int | None = None,
+        bbox_resize_factor: float | None = None,
+    ):
         return SpatialIndex._build(
             box=Box.bounding_all(polygons),
             items=polygons.copy(),  # type: ignore
             bins=bins or len(polygons),
+            bbox_resize_factor=bbox_resize_factor,
         )
 
     @staticmethod
@@ -414,15 +457,20 @@ class SpatialIndex:
             bins=bins,
         )
 
-    def lookup_tile_id(self, p: Point) -> int | None:
+    def candidate_tiles(self, p: Point) -> Iterable[tuple[int, Polygon]]:
         if not self.box.includes(p):
-            return None
+            return
         cell_w, cell_h = self.cell_size
         icell = math.floor((p.x - self.box.anchor.x) / cell_w)
         jcell = math.floor((p.y - self.box.anchor.y) / cell_h)
         for candidate_id in self.items_in_bin[icell][jcell]:
             candidate = self.items[candidate_id]
-            if isinstance(candidate, Polygon) and candidate.includes(p):
+            if isinstance(candidate, Polygon):
+                yield candidate_id, candidate
+
+    def lookup_tile_id(self, p: Point) -> int | None:
+        for candidate_id, candidate in self.candidate_tiles(p):
+            if candidate.includes(p):
                 return candidate_id
         else:
             return None
@@ -446,7 +494,7 @@ class SpatialIndex:
     def border_edges(self) -> list[LineSegment]:
         if self.border_edges_precomputed is not None:
             return self.border_edges_precomputed
-        eps = 1e-6
+        eps = DEFAULT_EPS_DISTANCE
         res: list[LineSegment] = []
         for t in self.items:
             if not isinstance(t, Polygon):

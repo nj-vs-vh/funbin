@@ -9,6 +9,7 @@ import cmath
 import math
 import random
 import re
+from typing import Literal
 
 import cairo
 
@@ -41,15 +42,19 @@ for c in c1, c2, c3:
             }[c]
         )
     except KeyError:
-        color = [int(x, 16) / 256 for x in re.compile("[0-9a-fA-F]{2}").findall(c)]
+        shape = [int(x, 16) / 256 for x in re.compile("[0-9a-fA-F]{2}").findall(c)]
 
-        if len(color) != 3:
+        if len(shape) != 3:
             print("\nColor not supported")
             raise SystemExit(0)
 
-        colors.append(color)
+        colors.append(shape)
 
-base = 5  # Eventuall, more bases will be supported (meaning instead of based on five, based on 7 or something)
+phi = (5**0.5 + 1) / 2  # Golden ratio
+
+base = 5
+Penrose2Tiling = Literal["P2", "P3"]
+kind: Penrose2Tiling = "P2"
 
 # Canvas setup
 surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, r1, r2)
@@ -58,37 +63,51 @@ ctx.scale(max(r1, r2) / scale, max(r1, r2) / scale)
 ctx.translate(0.5 * scale, 0.5 * scale)  # Center the drawing
 
 # Create first layer of triangles
-triangles = []
+TriangleKind = Literal[0, 1]
+Triangle = tuple[TriangleKind, complex, complex, complex]
+
+triangles: list[Triangle] = []
 for i in range(base * 2):
     v2 = cmath.rect(1, (2 * i - 1) * math.pi / (base * 2))
     v3 = cmath.rect(1, (2 * i + 1) * math.pi / (base * 2))
-
     if i % 2 == 0:
         v2, v3 = v3, v2  # Mirror every other triangle
 
-    triangles.append(("thin", 0, v2, v3))
+    if kind == "P2":
+        triangles.append((0, v2, 0j, v3))
+    else:
+        triangles.append((0, 0, v2, v3))
 
-phi = (5**0.5 + 1) / 2  # Golden ratio
 
 for i in range(divisions):
-    new_triangles = []
-
+    new_triangles: list[Triangle] = []
     for shape, v1, v2, v3 in triangles:
-        if shape == "thin":
-            # Divide thin rhombus
-            p1 = v1 + (v2 - v1) / phi
-            new_triangles += [("thin", v3, p1, v2), ("thicc", p1, v3, v1)]
+        if kind == "P2":
+            if shape == 0:
+                # Subdivide red (sharp isosceles) (half kite) triangle
+                p1 = v1 + (v2 - v1) / phi
+                p2 = v2 + (v3 - v2) / phi
+                new_triangles.extend(((1, p2, p1, v2), (0, p1, v1, p2), (0, v3, v1, p2)))
+            else:
+                # Subdivide blue (fat isosceles) (half dart) triangle
+                p3 = v3 + (v1 - v3) / phi
+                new_triangles.extend(((1, v2, p3, v1), (0, p3, v3, v2)))
         else:
-            # Divide thicc rhombus
-            p2 = v2 + (v1 - v2) / phi
-            p3 = v2 + (v3 - v2) / phi
-            new_triangles += [("thicc", p3, v3, v1), ("thicc", p2, p3, v2), ("thin", p3, p2, v1)]
+            if shape == 0:
+                # Divide thin rhombus
+                p1 = v1 + (v2 - v1) / phi
+                new_triangles.extend(((1, p1, v3, v1), (0, v3, p1, v2)))
+            else:
+                # Divide thicc rhombus
+                p2 = v2 + (v1 - v2) / phi
+                p3 = v2 + (v3 - v2) / phi
+                new_triangles.extend(((1, p3, v3, v1), (1, p2, p3, v2), (0, p3, p2, v1)))
 
-        triangles = new_triangles
+    triangles = new_triangles
 
-# Draw thin rhombi
+# Draw kind 0
 for shape, v1, v2, v3 in triangles:
-    if shape == "thin":
+    if shape == 0:
         ctx.move_to(v1.real, v1.imag)
         ctx.line_to(v2.real, v2.imag)
         ctx.line_to(v3.real, v3.imag)
@@ -96,9 +115,9 @@ for shape, v1, v2, v3 in triangles:
 ctx.set_source_rgb(colors[0][0], colors[0][1], colors[0][2])
 ctx.fill()
 
-# Draw thicc rhombi
+# # Draw kind 1
 for shape, v1, v2, v3 in triangles:
-    if shape == "thicc":
+    if shape == 1:
         ctx.move_to(v1.real, v1.imag)
         ctx.line_to(v2.real, v2.imag)
         ctx.line_to(v3.real, v3.imag)
@@ -116,6 +135,7 @@ for shape, v1, v2, v3 in triangles:
     ctx.move_to(v2.real, v2.imag)
     ctx.line_to(v1.real, v1.imag)
     ctx.line_to(v3.real, v3.imag)
+    # ctx.close_path()
 
 ctx.set_source_rgb(colors[2][0], colors[2][1], colors[2][2])
 ctx.set_line_width(divisions**-3) if divisions > 3 else ctx.set_line_width(divisions**-5)
