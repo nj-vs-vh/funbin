@@ -23,3 +23,4 @@
 - [bob](https://scollins.net/penrose/)
 - [P1 and P4 (novel)](https://arxiv.org/pdf/2505.14013)
 - [P1 tiling rules](https://imgur.com/tNhJT4T)
+- [very detailed BSc thesis on the topic](https://pcwww.liv.ac.uk/~hemraj/thesis/BSc/2021_Daniel_Gouldsbrough_BSc_Thesis.pdf)

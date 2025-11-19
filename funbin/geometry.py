@@ -69,6 +69,12 @@ class Point:
     def is_close(self, other: "Point", sqeps: float = DEFAULT_EPS_DISTANCE**2) -> bool:
         return (self - other).sqabs < sqeps
 
+    def rotated(self, angle: float) -> "Point":
+        return Point(
+            x=self.x * np.cos(angle) - self.y * np.sin(angle),
+            y=self.x * np.sin(angle) + self.y * np.cos(angle),
+        )
+
 
 def is_ccw_order(A: Point, B: Point, C: Point) -> bool:
     return (C.y - A.y) * (B.x - A.x) > (B.y - A.y) * (C.x - A.x)
@@ -484,6 +490,9 @@ class SpatialIndex:
                 return candidate_id
         else:
             return None
+
+    def lookup_all_tile_ids(self, p: Point) -> list[int]:
+        return [candidate_id for candidate_id, candidate in self.candidate_tiles(p) if candidate.includes(p)]
 
     def is_inside_tiles(self, p: Point) -> bool:
         return self.lookup_tile_id(p) is not None

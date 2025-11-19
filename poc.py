@@ -38,6 +38,9 @@ def funbin(
     if spatial_indexing:
         indexed_tiling = SpatialIndex.from_polygons(tiling, bins=len(tiling))
         for sample, weight in zip(samples, weights or itertools.repeat(1.0 / samples.shape[0])):
+            # for tile_id in indexed_tiling.lookup_all_tile_ids(Point(*sample)):
+            #     weight_per_tile[tile_id] += weight
+
             tile_id = indexed_tiling.lookup_tile_id(Point(*sample))
             if tile_id is not None:
                 weight_per_tile[tile_id] += weight
@@ -75,34 +78,38 @@ if __name__ == "__main__":
     bins = 30
     cmap = "inferno"
 
-    t1 = time.time()
+    start = time.time()
     axes[0].hist2d(x, y, bins=bins, cmap=cmap)
     axes[0].set_title("Regular hist2d")
-    t2 = time.time()
-    print(f"Regular hist: {t2 - t1:.3f} sec")
+    print(f"Regular hist: {time.time() - start:.3f} sec")
 
+    start = time.time()
     funbin(axes[1], x, y, tiling=penrose_tiling("P3", (bins, bins)), cmap=cmap)
     axes[1].set_title("Penrose P3 (rhombic) tiling")
-    t3 = time.time()
-    print(f"P3 hist: {t3 - t2:.3f} sec")
+    print(f"P3 hist: {time.time() - start:.3f} sec")
 
+    start = time.time()
     funbin(axes[2], x, y, tiling=penrose_tiling("P2", (bins, bins)), cmap=cmap)
     axes[2].set_title("Penrose P2 (darts and kites) tiling")
-    t4 = time.time()
-    print(f"P2 hist: {t4 - t3:.3f} sec")
+    print(f"P2 hist: {time.time() - start:.3f} sec")
 
+    start = time.time()
+    funbin(axes[3], x, y, tiling=penrose_tiling("P1", (bins, bins)), cmap=cmap)
+    axes[3].set_title("Penrose P1 tiling")
+    print(f"P1 hist: {time.time() - start:.3f} sec")
+
+    start = time.time()
     voronoi_points = bins**2
-    funbin(axes[3], x, y, tiling=voronoi(points=voronoi_points), cmap=cmap)
-    axes[3].set_title(f"Voronoi diagram of {voronoi_points} random points")
-    t5 = time.time()
-    print(f"Voronoi: {t5 - t4:.3f} sec")
+    funbin(axes[4], x, y, tiling=voronoi(points=voronoi_points), cmap=cmap)
+    axes[4].set_title(f"Voronoi diagram of {voronoi_points} random points")
+    print(f"Voronoi: {time.time() - start:.3f} sec")
 
+    start = time.time()
     raw = aperiodic_monotile(niter=5)
     tiling = rectanglize_tiling(raw, target_bins=(bins, bins), max_tries=30, debug=True)
-    pc = funbin(axes[4], x, y, tiling=tiling, cmap=cmap)
-    axes[4].set_title("Aperioric monotile")
-    t6 = time.time()
-    print(f"Aperiodic monotile: {t6 - t5:.3f} sec")
+    pc = funbin(axes[5], x, y, tiling=tiling, cmap=cmap)
+    axes[5].set_title("Aperioric monotile")
+    print(f"Aperiodic monotile: {time.time() - start:.3} sec")
 
     for ax in axes:
         ax.set_aspect("equal")
