@@ -79,7 +79,7 @@ if __name__ == "__main__":
     axes[0].hist2d(x, y, bins=bins, cmap=cmap)
     axes[0].set_title("Regular hist2d")
     t2 = time.time()
-    funbin(axes[1], x, y, tiling=penrose_P3_de_Brujin(bins, bins, random_seed=1312), cmap=cmap)
+    funbin(axes[1], x, y, tiling=penrose_P3_de_Brujin(bins, bins), cmap=cmap)
     axes[1].set_title("Penrose P3 tiling")
     t3 = time.time()
     voronoi_points = bins**2
@@ -87,7 +87,7 @@ if __name__ == "__main__":
     axes[2].set_title(f"Voronoi diagram of {voronoi_points} random points")
     t4 = time.time()
     raw = aperiodic_monotile(niter=5)
-    tiling = rectanglize_tiling(raw, rotate=True, target_bins=(bins, bins), max_tries=30, debug=True)
+    tiling = rectanglize_tiling(raw, target_bins=(bins, bins), max_tries=30, debug=True)
     pc = funbin(axes[3], x, y, tiling=tiling, cmap=cmap)
     axes[3].set_title("Aperioric monotile")
     t5 = time.time()

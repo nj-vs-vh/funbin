@@ -308,6 +308,7 @@ def aperiodic_monotile(
     construction: Literal["H8", "H7"] = "H8",
     kind: Literal["chevron", "hat", "tile(1,1)", "turtle", "comet"] | float = "hat",
 ) -> list[Polygon]:
+    # TODO: track border edges as we're building the tiling
     s = base_tile_state()
     for _ in range(niter):
         s = extended_state(s)

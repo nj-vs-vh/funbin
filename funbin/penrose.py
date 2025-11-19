@@ -117,9 +117,9 @@ def penrose_tiling_triangles(kind: Penrose2TilingKind, divisions: int, base_tria
     ]
 
 
-def penrose_P3_de_Brujin(n_horiz: int, n_vert: int, random_seed: int | None = None) -> list[Polygon]:
+def penrose_P3_de_Brujin(n_horiz: int, n_vert: int) -> list[Polygon]:
     """Generation with de Brujin method facilitated by pynrose library"""
-    tiling = Tiling(rnd=random.Random(random_seed))
+    tiling = Tiling(rnd=random.Random(np.random.random()))
     safety_margin_factor = 1.3
     grid = Grid(Vector(0, 0), Vector(int(n_horiz * safety_margin_factor), int(n_vert * safety_margin_factor)))
     polys = [Polygon.from_rhombus(r) for r in tiling.rhombii(grid.cell(0, 0)) if r]

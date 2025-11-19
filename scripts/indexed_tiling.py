@@ -9,7 +9,6 @@ from funbin.einstein import aperiodic_monotile
 from funbin.geometry import Box, Point, SpatialIndex
 
 it = SpatialIndex.from_polygons(
-    # polygons=penrose_P3(25, 25, random_seed=161),
     polygons=aperiodic_monotile(niter=2),
     bins=(15, 15),
 )
