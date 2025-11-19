@@ -82,12 +82,12 @@ if __name__ == "__main__":
     print(f"Regular hist: {t2 - t1:.3f} sec")
 
     funbin(axes[1], x, y, tiling=penrose_tiling("P3", (bins, bins)), cmap=cmap)
-    axes[1].set_title("Penrose P3 tiling")
+    axes[1].set_title("Penrose P3 (rhombic) tiling")
     t3 = time.time()
     print(f"P3 hist: {t3 - t2:.3f} sec")
 
     funbin(axes[2], x, y, tiling=penrose_tiling("P2", (bins, bins)), cmap=cmap)
-    axes[2].set_title("Penrose P2 tiling")
+    axes[2].set_title("Penrose P2 (darts and kites) tiling")
     t4 = time.time()
     print(f"P2 hist: {t4 - t3:.3f} sec")
 

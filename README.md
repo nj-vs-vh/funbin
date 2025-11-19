@@ -21,3 +21,5 @@
 - [spectre web app](https://cs.uwaterloo.ca/~csk/spectre/app.html)
 - [detailed penrose tiling article](https://www.ams.org/publicoutreach/feature-column/fcarc-penrose)
 - [bob](https://scollins.net/penrose/)
+- [P1 and P4 (novel)](https://arxiv.org/pdf/2505.14013)
+- [P1 tiling rules](https://imgur.com/tNhJT4T)
