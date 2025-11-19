@@ -9,7 +9,7 @@ from matplotlib.colors import Colormap, Normalize
 
 from funbin.einstein import aperiodic_monotile
 from funbin.geometry import Box, Point, Polygon, SpatialIndex, fitted_to_box, rectanglize_tiling
-from funbin.penrose import penrose_P3_de_Brujin
+from funbin.penrose import penrose_tiling
 from funbin.voronoi import voronoi
 
 
@@ -62,7 +62,7 @@ def funbin(
 if __name__ == "__main__":
     from typing import Sequence, cast
 
-    fig, axes = plt.subplots(figsize=(10, 10), ncols=2, nrows=2)
+    fig, axes = plt.subplots(figsize=(15, 10), ncols=3, nrows=2)
     axes = cast(Sequence[Axes], axes.flatten())
     np.random.seed(1312)
     sample_size = 10000
@@ -79,24 +79,33 @@ if __name__ == "__main__":
     axes[0].hist2d(x, y, bins=bins, cmap=cmap)
     axes[0].set_title("Regular hist2d")
     t2 = time.time()
-    funbin(axes[1], x, y, tiling=penrose_P3_de_Brujin(bins, bins), cmap=cmap)
+    print(f"Regular hist: {t2 - t1:.3f} sec")
+
+    funbin(axes[1], x, y, tiling=penrose_tiling("P3", (bins, bins)), cmap=cmap)
     axes[1].set_title("Penrose P3 tiling")
     t3 = time.time()
-    voronoi_points = bins**2
-    funbin(axes[2], x, y, tiling=voronoi(points=voronoi_points), cmap=cmap)
-    axes[2].set_title(f"Voronoi diagram of {voronoi_points} random points")
+    print(f"P3 hist: {t3 - t2:.3f} sec")
+
+    funbin(axes[2], x, y, tiling=penrose_tiling("P2", (bins, bins)), cmap=cmap)
+    axes[2].set_title("Penrose P2 tiling")
     t4 = time.time()
+    print(f"P2 hist: {t4 - t3:.3f} sec")
+
+    voronoi_points = bins**2
+    funbin(axes[3], x, y, tiling=voronoi(points=voronoi_points), cmap=cmap)
+    axes[3].set_title(f"Voronoi diagram of {voronoi_points} random points")
+    t5 = time.time()
+    print(f"Voronoi: {t5 - t4:.3f} sec")
+
     raw = aperiodic_monotile(niter=5)
     tiling = rectanglize_tiling(raw, target_bins=(bins, bins), max_tries=30, debug=True)
-    pc = funbin(axes[3], x, y, tiling=tiling, cmap=cmap)
-    axes[3].set_title("Aperioric monotile")
-    t5 = time.time()
+    pc = funbin(axes[4], x, y, tiling=tiling, cmap=cmap)
+    axes[4].set_title("Aperioric monotile")
+    t6 = time.time()
+    print(f"Aperiodic monotile: {t6 - t5:.3f} sec")
 
-    print(f"Regular hist: {t2 - t1:.3f} sec")
-    print(f"P3 hist: {t3 - t2:.3f} sec")
-    print(f"Voronoi: {t4 - t3:.3f} sec")
-    print(f"Aperiodic monotile: {t5 - t4:.3f} sec")
-    # for ax in axes:
-    #     ax.scatter(x, y, edgecolor="none", color="gray", alpha=0.3, marker=".")
+    for ax in axes:
+        ax.set_aspect("equal")
+        # ax.scatter(x, y, edgecolor="none", color="gray", alpha=0.3, marker=".")
     fig.tight_layout()
     fig.savefig("poc.png")

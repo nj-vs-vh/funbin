@@ -20,6 +20,10 @@ class Point:
     x: float
     y: float
 
+    @staticmethod
+    def from_complex(c: complex) -> "Point":
+        return Point(c.real, c.imag)
+
     def __add__(self, other: "Point"):
         if isinstance(other, Point):
             return Point(self.x + other.x, self.y + other.y)
@@ -390,17 +394,23 @@ class SpatialIndex:
     def append(self, item: Polygon | LineSegment, bbox_resize_factor: float | None = None) -> None:
         self.items.append(item)
         self.item_bins.append([])
+        bins_x, bins_y = self.bins
         id = len(self.items) - 1
-        touched_i: list[int] = []
-        touched_j: list[int] = []
+        covered_is: list[int] = []
+        covered_js: list[int] = []
         item_bbox = Box.bounding_poly(item) if isinstance(item, Polygon) else Box.bounding(item)
         if bbox_resize_factor is not None:
             item_bbox = item_bbox.resized(bbox_resize_factor)
         for vert in item_bbox.vertices:
-            touched_i.append(math.floor((vert.x - self.box.anchor.x) / self.cell_w))
-            touched_j.append(math.floor((vert.y - self.box.anchor.y) / self.cell_h))
-        for i in range(min(touched_i), max(touched_i) + 1):
-            for j in range(min(touched_j), max(touched_j) + 1):
+            i = math.floor((vert.x - self.box.anchor.x) / self.cell_w)
+            j = math.floor((vert.y - self.box.anchor.y) / self.cell_h)
+            # when using resizee factor for item bboxes, their corners can clip
+            # the global bbox, so this check is needed
+            if 0 <= i < bins_x and 0 <= j < bins_y:
+                covered_is.append(i)
+                covered_js.append(j)
+        for i in range(min(covered_is), max(covered_is) + 1):
+            for j in range(min(covered_js), max(covered_js) + 1):
                 self.items_in_bin[i][j].append(id)
                 self.item_bins[id].append((i, j))
 

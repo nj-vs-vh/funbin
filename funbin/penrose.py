@@ -6,18 +6,43 @@ from typing import Literal
 import numpy as np
 from pynrose import Grid, Tiling, Vector
 
-from funbin.geometry import Box, Point, Polygon, SpatialIndex, are_segments_close, clipped_to_box
+from funbin.geometry import (
+    Box,
+    LineSegment,
+    Point,
+    Polygon,
+    SpatialIndex,
+    are_segments_close,
+    clipped_to_box,
+    rectanglize_tiling,
+)
 
 PHI = (5**0.5 + 1) / 2  # Golden ratio
 
 
-Penrose2TilingKind = Literal["P2", "P3"]
+PenroseBitilingKind = Literal["P2", "P3"]
 TriangleKind = Literal[0, 1]  # thin, thick
 Triangle = tuple[TriangleKind, complex, complex, complex]
 
 
-def penrose_tiling(
-    kind: Penrose2TilingKind,
+def penrose_tiling(kind: PenroseBitilingKind, bins: tuple[int, int]):
+    target_bins = bins[0] * bins[1]
+    bins_to_generate = 2 * target_bins  # safety margin + add a bit of random variance
+    # number of tiles (conservatively) scales with divisions as 3 * (1 + PHI) ** division
+    divisions = int(math.ceil(np.log(bins_to_generate / 3) / np.log(1 + PHI)))
+    return rectanglize_tiling(
+        tiles=penrose_tiling_subdivision(
+            kind=kind,
+            divisions=divisions,
+            include_incomplete_tiles=True,
+        ),
+        target_bins=bins,
+        border_edges_precomputed=penrose_tiling_triangles_border(),
+    )
+
+
+def penrose_tiling_subdivision(
+    kind: PenroseBitilingKind,
     divisions: int,
     include_incomplete_tiles: bool = False,
     base_triangles: int = 5,
@@ -62,7 +87,7 @@ def penrose_tiling(
     return res
 
 
-def penrose_tiling_triangles(kind: Penrose2TilingKind, divisions: int, base_triangles: int = 5) -> list[Polygon]:
+def penrose_tiling_triangles(kind: PenroseBitilingKind, divisions: int, base_triangles: int = 5) -> list[Polygon]:
     # Create first layer of triangles
     triangles: list[Triangle] = []
     for i in range(base_triangles * 2):
@@ -105,9 +130,9 @@ def penrose_tiling_triangles(kind: Penrose2TilingKind, divisions: int, base_tria
     return [
         Polygon.from_points(
             (
-                Point(v2.real, v2.imag),
-                Point(v1.real, v1.imag),
-                Point(v3.real, v3.imag),
+                Point.from_complex(v2),
+                Point.from_complex(v1),
+                Point.from_complex(v3),
                 # NOTE: in the original script the closing edge of the triangle (v3 -> v2)
                 # is never drawn. here we save it so that the "missing" closing edge is last
                 # we use it later when merging triangles into tiles
@@ -117,8 +142,13 @@ def penrose_tiling_triangles(kind: Penrose2TilingKind, divisions: int, base_tria
     ]
 
 
-def penrose_P3_de_Brujin(n_horiz: int, n_vert: int) -> list[Polygon]:
+def penrose_tiling_triangles_border() -> list[LineSegment]:
+    return [list(tri.edges)[2] for tri in penrose_tiling_triangles(kind="P3", divisions=0)]
+
+
+def penrose_P3_de_Brujin(bins: tuple[int, int]) -> list[Polygon]:
     """Generation with de Brujin method facilitated by pynrose library"""
+    n_horiz, n_vert = bins
     tiling = Tiling(rnd=random.Random(np.random.random()))
     safety_margin_factor = 1.3
     grid = Grid(Vector(0, 0), Vector(int(n_horiz * safety_margin_factor), int(n_vert * safety_margin_factor)))
