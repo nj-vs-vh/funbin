@@ -9,7 +9,8 @@ from matplotlib.collections import PolyCollection
 from matplotlib.colors import Colormap, Normalize
 
 from funbin.einstein import aperiodic_monotile
-from funbin.geometry import Box, Point, Polygon, SpatialIndex, fitted_to_box, rectanglize_tiling
+from funbin.geometry import Box, Point, Polygon, SpatialIndex, clipped_to_box, fitted_to_box, rectanglize_tiling
+from funbin.maps import read_shapefile
 from funbin.penrose import penrose_tiling
 from funbin.voronoi import voronoi
 
@@ -69,17 +70,17 @@ if __name__ == "__main__":
 
     logging.basicConfig(level=logging.INFO)
 
-    fig, axes = plt.subplots(figsize=(15, 10), ncols=3, nrows=2)
+    fig, axes = plt.subplots(figsize=(15, 15), ncols=3, nrows=3)
     axes = cast(Sequence[Axes], axes.flatten())
     np.random.seed(161)
-    sample_size = 10000
+    sample_size = 50000
 
     gauss_1 = np.random.normal(loc=0, scale=1.0, size=(2, sample_size))
     gauss_2 = np.random.normal(loc=np.expand_dims((2.0, 2.0), axis=1), scale=0.5, size=(2, sample_size))
     samples = np.where(np.random.random(sample_size) > 0.1, gauss_1, gauss_2)
     x, y = samples
 
-    bins = 30
+    bins = 25
     cmap = "inferno"
 
     start = time.time()
@@ -114,6 +115,13 @@ if __name__ == "__main__":
     pc = funbin(axes[5], x, y, tiling=tiling, cmap=cmap)
     axes[5].set_title("Aperioric monotile")
     print(f"Aperiodic monotile: {time.time() - start:.3} sec")
+
+    start = time.time()
+    tiling = read_shapefile("misc/ne_10m_admin_2_counties.zip")
+    tiling = clipped_to_box(tiling, Box(Point(-130, 25), 80, 25))
+    pc = funbin(axes[6], x, y, tiling=tiling, cmap=cmap)
+    axes[6].set_title("US counties")
+    print(f"US counties: {time.time() - start:.3} sec")
 
     for ax in axes:
         ax.set_aspect("equal")

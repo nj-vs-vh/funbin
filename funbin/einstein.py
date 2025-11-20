@@ -75,7 +75,6 @@ class PointInTile:
 
 
 LinearMat = np.ndarray  # size: (2, 2)
-AffineMat = np.ndarray  # size: (3, 3)
 
 
 def trot(angle: float) -> LinearMat:
@@ -89,43 +88,6 @@ def transAB(M: LinearMat, p: PointInTile) -> PointInTile:
     return PointInTile(
         x=M[0, 0] * p.x + M[0, 1] * p.y,
         y=M[1, 0] * p.x + M[1, 1] * p.y,
-    )
-
-
-def invAffine(am: AffineMat) -> AffineMat:
-    A = am[:, :2]
-    b = am[:, 2]
-    Ainv = np.linalg.inv(A)
-    return np.hstack((Ainv, -Ainv @ b))
-
-
-def mulAffine(A: AffineMat, B: AffineMat) -> AffineMat:
-    A = A.flatten()
-    B = B.flatten()
-    return np.array(
-        [
-            [
-                A[0] * B[0] + A[1] * B[3],
-                A[0] * B[1] + A[1] * B[4],
-                A[0] * B[2] + A[1] * B[5] + A[2],
-            ],
-            [
-                A[3] * B[0] + A[4] * B[3],
-                A[3] * B[1] + A[4] * B[4],
-                A[3] * B[2] + A[4] * B[5] + A[5],
-            ],
-        ]
-    )
-
-
-def ttransAffine(tx: float, ty: float) -> AffineMat:
-    return np.array([[1, 0, tx], [0, 1, ty]])
-
-
-def transAffine(M: AffineMat, p: PointInTile) -> PointInTile:
-    return PointInTile(
-        x=M[0, 0] * p.x + M[0, 1] * p.y + M[0, 2],
-        y=M[1, 0] * p.x + M[1, 1] * p.y + M[1, 2],
     )
 
 
@@ -184,6 +146,8 @@ class Meta:
 
     def as_polygons(self, a: float, b: float) -> list[tuple[Polygon, str]]:
         return list(itertools.chain.from_iterable(g.as_polygons(a, b) for g in self.geoms))
+
+    # def compute_border
 
 
 @dataclass
