@@ -71,7 +71,7 @@ if __name__ == "__main__":
 
     fig, axes = plt.subplots(figsize=(15, 10), ncols=3, nrows=2)
     axes = cast(Sequence[Axes], axes.flatten())
-    np.random.seed(1312)
+    np.random.seed(161)
     sample_size = 10000
 
     gauss_1 = np.random.normal(loc=0, scale=1.0, size=(2, sample_size))
