@@ -1,5 +1,6 @@
 import functools
 import itertools
+import logging
 import math
 from dataclasses import dataclass
 from typing import Callable, Iterable, TypeVar
@@ -10,7 +11,8 @@ from matplotlib.axes import Axes
 from matplotlib.collections import PolyCollection
 from matplotlib.patches import Rectangle
 from pynrose import Rhombus, RhombusVertex
-from tqdm import trange
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_EPS_DISTANCE = 1e-6
 
@@ -536,25 +538,24 @@ def rectanglize_tiling(
     tiles: list[Polygon],
     target_bins: tuple[int, int],
     rotate: bool = True,
-    max_tries: int = 100,
-    debug: bool = False,
+    max_tries: int = 30,
     border_edges_precomputed: list[LineSegment] | None = None,
 ) -> list[Polygon]:
+    logger.info(f"Rectanglizing {len(tiles)} tiles into {target_bins} bins")
     if border_edges_precomputed is not None:
+        logger.info("Border precomputed")
         border_edges = border_edges_precomputed
     else:
-        print("Computing aux index...")
+        logger.info("Computing aux index...")
         index = SpatialIndex.from_polygons(tiles, bins=len(tiles) * 10)
-        print("Computing border edges...")
+        logger.info("Computing border edges...")
         border_edges = index.border_edges
-    if debug and border_edges_precomputed is None:
-        print(f"Computed border edges: {len(border_edges)}")
+        logger.info(f"Computed border edges: {len(border_edges)}")
 
     target_bins_x, target_bins_y = target_bins
 
     best: tuple[list[Polygon], Box, float, float, float] | None = None
-    range_ = trange if debug else range
-    for i_try in range_(max_tries):
+    for i_try in range(max_tries):
         if rotate:
             angle = np.random.random() * 2 * math.pi
             tiles = rotated(tiles, angle=angle)
@@ -570,17 +571,14 @@ def rectanglize_tiling(
         if best is None or score > best[-1]:
             best = res, box, bins_x, bins_y, score
         if bins_x > target_bins_x and bins_y > target_bins_y:
-            if debug:
-                print(f"Success on try #{i_try + 1}")
+            logger.info(f"Success on try #{i_try + 1}")
             break
     else:
-        if debug:
-            print(f"Not successful after {max_tries} tries")
+        logger.info(f"Not successful after {max_tries} tries")
 
     assert best is not None
     res, box, bins_x, bins_y, score = best
-    if debug:
-        print(f"Best rect found: {box}, bins: {bins_x}, {bins_y}, score={score}")
+    logger.info(f"Best inscribed rect found: {box}, bins: {bins_x:.2f}, {bins_y:.2f}, score={score:.2f}")
 
     sub_width = box.width * min(1.0, target_bins_x / bins_x)
     sub_height = box.height * min(1.0, target_bins_y / bins_y)
@@ -593,9 +591,7 @@ def rectanglize_tiling(
         width=sub_width,
         height=sub_height,
     )
-    if debug:
-        print(f"Sub box: {sub_box}")
-
+    logger.info(f"Clipping to subbox: {sub_box}")
     return clipped_to_box(res, sub_box)
 
 
