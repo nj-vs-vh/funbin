@@ -1,4 +1,5 @@
 import itertools
+import logging
 import time
 
 import numpy as np
@@ -33,7 +34,7 @@ def funbin(
     samples_bbox = Box.bounding(samples)
     tiling = fitted_to_box(tiling, samples_bbox)
 
-    weight_per_tile = [0 for _ in tiling]
+    weight_per_tile = [0.0 for _ in tiling]
 
     if spatial_indexing:
         indexed_tiling = SpatialIndex.from_polygons(tiling, bins=len(tiling))
@@ -52,9 +53,10 @@ def funbin(
                     weight_per_tile[tile_id] += weight
                     break
 
+    tile_values = [tile_weight / (poly.area if density else 1.0) for tile_weight, poly in zip(weight_per_tile, tiling)]
     poly_coll_kw.setdefault("edgecolors", "face")
     pc = PolyCollection([p.verts for p in tiling], **poly_coll_kw)
-    pc.set_array([tile_weight / (poly.area if density else 1.0) for tile_weight, poly in zip(weight_per_tile, tiling)])
+    pc.set_array(tile_values)
     pc.set_cmap(cmap)
     pc.set_norm(norm)
     ax.add_collection(pc)
@@ -64,6 +66,8 @@ def funbin(
 
 if __name__ == "__main__":
     from typing import Sequence, cast
+
+    logging.basicConfig(level=logging.INFO)
 
     fig, axes = plt.subplots(figsize=(15, 10), ncols=3, nrows=2)
     axes = cast(Sequence[Axes], axes.flatten())
@@ -106,7 +110,7 @@ if __name__ == "__main__":
 
     start = time.time()
     raw = aperiodic_monotile(niter=5)
-    tiling = rectanglize_tiling(raw, target_bins=(bins, bins), max_tries=30, debug=True)
+    tiling = rectanglize_tiling(raw, target_bins=(bins, bins))
     pc = funbin(axes[5], x, y, tiling=tiling, cmap=cmap)
     axes[5].set_title("Aperioric monotile")
     print(f"Aperiodic monotile: {time.time() - start:.3} sec")
