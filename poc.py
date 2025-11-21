@@ -9,7 +9,7 @@ from matplotlib.collections import PolyCollection
 from matplotlib.colors import Colormap, Normalize
 
 from funbin.einstein import aperiodic_monotile
-from funbin.geometry import Box, Point, Polygon, SpatialIndex, clipped_to_box, fitted_to_box, rectanglize_tiling
+from funbin.geometry import Box, Point, Polygon, SpatialIndex, clipped_to_box, fitted_to_box
 from funbin.maps import read_shapefile
 from funbin.penrose import penrose_tiling
 from funbin.voronoi import voronoi
@@ -80,7 +80,7 @@ if __name__ == "__main__":
     samples = np.where(np.random.random(sample_size) > 0.1, gauss_1, gauss_2)
     x, y = samples
 
-    bins = 25
+    bins = 40
     cmap = "inferno"
 
     start = time.time()
@@ -110,8 +110,7 @@ if __name__ == "__main__":
     print(f"Voronoi: {time.time() - start:.3f} sec")
 
     start = time.time()
-    raw = aperiodic_monotile(niter=5)
-    tiling = rectanglize_tiling(raw, target_bins=(bins, bins))
+    tiling = aperiodic_monotile(bins=(bins, bins))
     pc = funbin(axes[5], x, y, tiling=tiling, cmap=cmap)
     axes[5].set_title("Aperioric monotile")
     print(f"Aperiodic monotile: {time.time() - start:.3} sec")

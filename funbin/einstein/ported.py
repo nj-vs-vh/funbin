@@ -73,6 +73,9 @@ class PointInTile:
             return PointInTile(self.x - other.x, self.y - other.y)
         return NotImplemented
 
+    def eval(self, a: float, b: float) -> Point:
+        return Point(x=self.x.eval(a, b), y=self.y.eval(a, b))
+
 
 LinearMat = np.ndarray  # size: (2, 2)
 
@@ -267,12 +270,15 @@ def extended_state(sys: State) -> State:
     )
 
 
-def aperiodic_monotile(
+AperiodicMonotileConstruction = Literal["H8", "H7"]
+AperiodicMonotileKind = Literal["chevron", "hat", "tile(1,1)", "turtle", "comet"] | float
+
+
+def aperiodic_monotile_raw(
     niter: int,
-    construction: Literal["H8", "H7"] = "H8",
-    kind: Literal["chevron", "hat", "tile(1,1)", "turtle", "comet"] | float = "hat",
+    construction: AperiodicMonotileConstruction = "H8",
+    kind: AperiodicMonotileKind = "hat",
 ) -> list[Polygon]:
-    # TODO: track border edges as we're building the tiling
     s = base_tile_state()
     for _ in range(niter):
         s = extended_state(s)
