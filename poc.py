@@ -119,7 +119,7 @@ if __name__ == "__main__":
     tiling = read_shapefile("misc/ne_10m_admin_2_counties.zip")
     tiling = clipped_to_box(tiling, Box(Point(-130, 25), 80, 25))
     pc = funbin(axes[6], x, y, tiling=tiling, cmap=cmap)
-    axes[6].set_title("US counties")
+    axes[6].set_title("Contiguous US counties")
     print(f"US counties: {time.time() - start:.3} sec")
 
     for ax in axes:
