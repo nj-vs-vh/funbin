@@ -54,7 +54,7 @@ if __name__ == "__main__":
     fig, ax = plt.subplots()
     polys = read_shapefile("misc/ne_10m_admin_2_counties.zip")
     polys = clipped_to_box(polys, Box(Point(-130, 25), 80, 25))
-    ax.add_collection(as_poly_collection(polys, randomize_color=True, edgecolors="none"))
+    ax.add_collection(as_poly_collection(polys, coloring="sequential", edgecolors="none"))
     Box.bounding_all(polys).resized(1.1).fit_axes(ax)
     ax.set_aspect("equal")
     fig.savefig("map.png", dpi=500)

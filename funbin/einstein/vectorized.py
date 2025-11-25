@@ -2,13 +2,14 @@
 A fast numpy-vectorized rewrite of the original JS code. See direct port in ported.py.
 """
 
+import collections
 import itertools
 from dataclasses import dataclass
-from typing import Literal
+from typing import Iterable, Literal
 
 import numpy as np
 
-from funbin.geometry import Point, Polygon, rotation_matrix
+from funbin.geometry import LineSegment, Point, Polygon, SpatialIndex, rotation_matrix
 
 
 @dataclass
@@ -18,11 +19,13 @@ class MetaTile:
 
     quad: np.ndarray
 
-    # TODO: track border
+    border_edge_points: np.ndarray | None = None
 
     def translate_in_place(self, dp: np.ndarray) -> None:
         self.verts += dp
         self.quad += dp
+        if self.border_edge_points is not None:
+            self.border_edge_points += dp
 
     def rotate_and_match(self, rotmat: np.ndarray, qidx: int, q_dp: np.ndarray | None) -> "MetaTile":
         res = MetaTile(
@@ -30,6 +33,9 @@ class MetaTile:
             quad=np.matvec(rotmat, self.quad),
             poly_start_indices=self.poly_start_indices,
         )
+        if self.border_edge_points is not None:
+            res.border_edge_points = np.matvec(rotmat, self.border_edge_points)
+
         if qidx >= 0:
             assert q_dp is not None
             res.translate_in_place(q_dp - res.quad[qidx, :])
@@ -42,8 +48,23 @@ class MetaTile:
             res.append(Polygon(verts=self.verts[start:end, :]))
         return res
 
+    def compute_border(self) -> None:
+        index = SpatialIndex.from_polygons(self.as_polygons())
+        edge_segments = index.border_edges
+        self.border_edge_points = pack_points(itertools.chain.from_iterable(edge_segments))
 
-def pack_points(points: list[Point]) -> np.ndarray:
+    def border_edges(self) -> list[LineSegment] | None:
+        if self.border_edge_points is None:
+            return None
+        return list(
+            itertools.batched(
+                (Point(*row) for row in self.border_edge_points),
+                n=2,
+            )
+        )  # type: ignore
+
+
+def pack_points(points: Iterable[Point]) -> np.ndarray:
     return np.array([(v.x, v.y) for v in points])
 
 
@@ -93,10 +114,9 @@ def base_tile_state(a: float, b: float) -> State:
     points = [prev]
 
     for kind, angle in edges:
-        if kind == "a":
-            prev += a * angle_dirs[angle]
-        else:
-            prev += b * angle_dirs[angle]
+        mult = a if kind == "a" else b
+        if mult >= 1e-6:
+            prev += mult * angle_dirs[angle]
         points.append(prev)
 
     quad = pack_points([points[1], points[3], points[9], points[13]])
@@ -131,7 +151,7 @@ def _merge_metatiles(mts: list[MetaTile], quad: np.ndarray | None = None) -> Met
         poly_start_indices_merged.extend([idx + offset for idx in smt.poly_start_indices])
         offset += smt.verts.shape[0]
 
-    return MetaTile(
+    res = MetaTile(
         verts=np.vstack([smt.verts for smt in mts]),
         poly_start_indices=poly_start_indices_merged,
         quad=(
@@ -148,13 +168,22 @@ def _merge_metatiles(mts: list[MetaTile], quad: np.ndarray | None = None) -> Met
         ),
     )
 
+    if all(mt.border_edge_points is not None for mt in mts):
+        candidate_edges = list(itertools.chain.from_iterable((mt.border_edges() or []) for mt in mts))
+        edge_centers = [((s + e) / 2).rounded(ndigits=2) for s, e in candidate_edges]
+        count = collections.Counter(edge_centers)
+        merged_border_edges = [edge for edge, center in zip(candidate_edges, edge_centers) if count[center] == 1]
+        res.border_edge_points = pack_points(itertools.chain.from_iterable(merged_border_edges))
+
+    return res
+
 
 def extended_state(sys: State) -> State:
     sing = sys.H8
     comp = sys.H7
 
     sub_metatiles: list[MetaTile] = [sing]
-    for rotmat, qidx, axis_quad_idx, flag in [
+    for rotmat, qidx, axis_quad_idx, is_comp in [
         (rotation_matrix(np.pi / 3), 2, 0, False),
         (rotation_matrix((2 * np.pi) / 3), 2, 0, False),
         (rotation_matrix(0), 1, 1, True),
@@ -163,7 +192,7 @@ def extended_state(sys: State) -> State:
         (rotation_matrix(0), 2, 0, False),
     ]:
         sub_metatiles.append(
-            (comp if flag else sing).rotate_and_match(
+            (comp if is_comp else sing).rotate_and_match(
                 rotmat,
                 qidx,
                 sub_metatiles[-1].quad[axis_quad_idx, :],
@@ -181,9 +210,9 @@ AperiodicMonotileKind = Literal["chevron", "hat", "tile(1,1)", "turtle", "comet"
 
 def aperiodic_monotile_raw(
     niter: int,
-    construction: AperiodicMonotileConstruction = "H8",
     kind: AperiodicMonotileKind = "hat",
-) -> list[Polygon]:
+    compute_border: bool = True,
+) -> State:
     match kind:
         case "chevron":
             a = 0.0
@@ -205,8 +234,11 @@ def aperiodic_monotile_raw(
             alpha = 1 + np.sqrt(3)
             a = alpha * shape_param
             b = alpha * (1 - shape_param)
-    s = base_tile_state(a, b)
-    for _ in range(niter):
-        s = extended_state(s)
 
-    return (s.H8 if construction == "H8" else s.H7).as_polygons()
+    state = base_tile_state(a, b)
+    if compute_border:
+        state.H7.compute_border()
+        state.H8.compute_border()
+    for _ in range(niter):
+        state = extended_state(state)
+    return state

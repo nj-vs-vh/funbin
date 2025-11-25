@@ -3,12 +3,12 @@ import itertools
 import logging
 import math
 from dataclasses import dataclass
-from typing import Callable, Iterable, TypeVar
+from typing import Callable, ClassVar, Iterable, Literal, TypeVar
 
 import matplotlib
 import numpy as np
 from matplotlib.axes import Axes
-from matplotlib.collections import PolyCollection
+from matplotlib.collections import LineCollection, PolyCollection
 from matplotlib.patches import Rectangle
 from pynrose import Rhombus, RhombusVertex
 
@@ -76,6 +76,9 @@ class Point:
             x=self.x * np.cos(angle) - self.y * np.sin(angle),
             y=self.x * np.sin(angle) + self.y * np.cos(angle),
         )
+
+    def rounded(self, ndigits: int) -> "Point":
+        return Point(x=round(self.x, ndigits=ndigits), y=round(self.y, ndigits=ndigits))
 
 
 def is_ccw_order(A: Point, B: Point, C: Point) -> bool:
@@ -376,16 +379,31 @@ def rotated(items: list[Rotatable], angle: float) -> list[Rotatable]:
     return [item.rotated(rm) if isinstance(item, Polygon) else rotated_segment(item, rm) for item in items]  # type: ignore
 
 
-JET = matplotlib.colormaps["jet"]
+poly_collection_coloring_cmap = matplotlib.colormaps["jet"]
+PolyCollectionColoring = Literal["random", "sequential"]
 
 
-def as_poly_collection(polys: list[Polygon], *, randomize_color: bool = False, **poly_coll_kw) -> PolyCollection:
+def as_poly_collection(
+    polys: list[Polygon], *, coloring: PolyCollectionColoring | None = None, **poly_coll_kw
+) -> PolyCollection:
     poly_coll_kw.setdefault("edgecolors", "gray")
-    if randomize_color:
-        poly_coll_kw.setdefault("facecolors", [JET(np.random.random()) for _ in polys])
-    else:
-        poly_coll_kw.setdefault("facecolors", "none")
+
+    match coloring:
+        case "random":
+            poly_coll_kw.setdefault("facecolors", [poly_collection_coloring_cmap(np.random.random()) for _ in polys])
+        case "sequential":
+            poly_coll_kw.setdefault(
+                "facecolors", [poly_collection_coloring_cmap(i / len(polys)) for i in range(len(polys))]
+            )
+        case _:
+            poly_coll_kw.setdefault("facecolors", "none")
+
     return PolyCollection([p.verts for p in polys], **poly_coll_kw)
+
+
+def as_line_collection(lines: list[LineSegment], **line_coll_kw) -> LineCollection:
+    line_coll_kw.setdefault("colors", "red")
+    return LineCollection([[(start.x, start.y), (end.x, end.y)] for start, end in lines], **line_coll_kw)
 
 
 @dataclass
@@ -511,21 +529,26 @@ class SpatialIndex:
     def cell_size(self) -> tuple[float, float]:
         return self.cell_w, self.cell_h
 
+    border_eps: ClassVar[float] = DEFAULT_EPS_DISTANCE
+
+    def is_border(self, edge: LineSegment) -> bool:
+        start, end = edge
+        vec = end - start
+        small_normal = self.border_eps * Point(vec.y, -vec.x).normalized()
+        middle = start + vec / 2
+        return self.is_inside_tiles(middle + small_normal) != self.is_inside_tiles(middle - small_normal)
+
     @functools.cached_property
     def border_edges(self) -> list[LineSegment]:
         if self.border_edges_precomputed is not None:
             return self.border_edges_precomputed
-        eps = DEFAULT_EPS_DISTANCE
         res: list[LineSegment] = []
         for t in self.items:
             if not isinstance(t, Polygon):
                 continue
-            for start, end in t.edges:
-                vec = end - start
-                small_normal = eps * Point(vec.y, -vec.x).normalized()
-                middle = start + vec / 2
-                if self.is_inside_tiles(middle + small_normal) != self.is_inside_tiles(middle - small_normal):
-                    res.append((start, end))
+            for edge in t.edges:
+                if self.is_border(edge):
+                    res.append(edge)
         return res
 
     def is_inscribed(self, poly: Polygon) -> bool:
