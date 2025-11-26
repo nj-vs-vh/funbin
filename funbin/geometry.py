@@ -1,9 +1,10 @@
+import collections
 import functools
 import itertools
 import logging
 import math
 from dataclasses import dataclass
-from typing import Callable, ClassVar, Iterable, Literal, TypeVar
+from typing import Callable, ClassVar, Iterable, Literal, TypeVar, cast
 
 import matplotlib
 import numpy as np
@@ -340,7 +341,7 @@ class Polygon:
 
 
 def clipped_to_box(tiles: list[Polygon], box: Box, eps: float = DEFAULT_EPS_DISTANCE) -> list[Polygon]:
-    res = [poly.clipped(box) for poly in tiles]
+    res = [poly.clipped(box) for poly in tiles if poly.bbox.overlaps(box)]
     return [p for p in res if p.area > eps**2]
 
 
@@ -542,14 +543,17 @@ class SpatialIndex:
     def border_edges(self) -> list[LineSegment]:
         if self.border_edges_precomputed is not None:
             return self.border_edges_precomputed
-        res: list[LineSegment] = []
-        for t in self.items:
-            if not isinstance(t, Polygon):
-                continue
-            for edge in t.edges:
-                if self.is_border(edge):
-                    res.append(edge)
-        return res
+
+        polys = cast(Iterable[Polygon], filter(lambda item: isinstance(item, Polygon), self.items))
+        candidate_edges = list(itertools.chain.from_iterable(poly.edges for poly in polys))
+
+        # initial check, eliminating edges with the same midpoint and length; this assumes no intersecting edges
+        edge_id = [(((s + e) / 2).rounded(ndigits=6), round((s - e).sqabs, ndigits=6)) for s, e in candidate_edges]
+        count = collections.Counter(edge_id)
+        candidate_edges = [edge for edge, edge_id in zip(candidate_edges, edge_id) if count[edge_id] == 1]
+
+        # explicit check for the rest
+        return [edge for edge in candidate_edges if self.is_border(edge)]
 
     def is_inscribed(self, poly: Polygon) -> bool:
         return all(self.is_inside_tiles(p) for p in poly.vertices) and all(
