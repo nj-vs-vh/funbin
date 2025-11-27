@@ -72,11 +72,10 @@ class Point:
     def is_close(self, other: "Point", sqeps: float = DEFAULT_EPS_DISTANCE**2) -> bool:
         return (self - other).sqabs < sqeps
 
-    def rotated(self, angle: float) -> "Point":
-        return Point(
-            x=self.x * np.cos(angle) - self.y * np.sin(angle),
-            y=self.x * np.sin(angle) + self.y * np.cos(angle),
-        )
+    def rotated(self, angle: float | np.ndarray) -> "Point":
+        rm = ensure_rotation_matrix(angle)
+        x, y = rm @ (self.x, self.y)
+        return Point(x, y)
 
     def rounded(self, ndigits: int) -> "Point":
         return Point(x=round(self.x, ndigits=ndigits), y=round(self.y, ndigits=ndigits))
@@ -124,6 +123,8 @@ def segment_intersection(AB: LineSegment, CD: LineSegment) -> Point | None:
 
 @dataclass(frozen=True)
 class Box:
+    """Axis-aligned rectangular box"""
+
     anchor: Point  # left bottom
     width: float
     height: float
@@ -333,10 +334,7 @@ class Polygon:
         return Polygon(self.verts + np.array([[vec.x, vec.y]]))
 
     def rotated(self, rot: float | np.ndarray) -> "Polygon":
-        if isinstance(rot, float):
-            rm = rotation_matrix(rot)
-        else:
-            rm = rot
+        rm = ensure_rotation_matrix(rot)
         return Polygon(verts=np.matvec(rm, self.verts))
 
 
@@ -352,6 +350,10 @@ def rotation_matrix(angle: float) -> np.ndarray:
             [np.sin(angle), np.cos(angle)],
         ]
     )
+
+
+def ensure_rotation_matrix(rot: float | np.ndarray) -> np.ndarray:
+    return rot if isinstance(rot, np.ndarray) else rotation_matrix(rot)
 
 
 def fitted_to_box(tiling: list[Polygon], box: Box) -> list[Polygon]:
@@ -372,12 +374,12 @@ def rotated_segment(ls: LineSegment, rm: np.ndarray) -> LineSegment:
     return tuple(Point(row[0], row[1]) for row in coords)  # type: ignore
 
 
-Rotatable = TypeVar("Rotatable", bound=Polygon | LineSegment)
+Rotatable = TypeVar("Rotatable", bound=Polygon | LineSegment | Point)
 
 
-def rotated(items: list[Rotatable], angle: float) -> list[Rotatable]:
+def all_rotated(items: list[Rotatable], angle: float) -> list[Rotatable]:
     rm = rotation_matrix(angle)
-    return [item.rotated(rm) if isinstance(item, Polygon) else rotated_segment(item, rm) for item in items]  # type: ignore
+    return [item.rotated(rm) if isinstance(item, (Polygon, Point)) else rotated_segment(item, rm) for item in items]  # type: ignore
 
 
 poly_collection_coloring_cmap = matplotlib.colormaps["jet"]
@@ -418,14 +420,21 @@ class SpatialIndex:
 
     border_edges_precomputed: list[LineSegment] | None = None
 
+    _rotation_angle: float | None = None
+    # precomputed border edges are always defined in intrinsic coords; this is a rotated version of them
+    _border_edges_precomputed_rotated: list[LineSegment] | None = None
+
     def append(self, item: Polygon | LineSegment, bbox_resize_factor: float | None = None) -> None:
+        if self._rotation_angle:
+            raise RuntimeError("Appending to rotated index is not supported")
+
         self.items.append(item)
         self.item_bins.append([])
         bins_x, bins_y = self.bins
         id = len(self.items) - 1
         covered_is: list[int] = []
         covered_js: list[int] = []
-        item_bbox = Box.bounding_poly(item) if isinstance(item, Polygon) else Box.bounding(item)
+        item_bbox = item.bbox if isinstance(item, Polygon) else Box.bounding(item)
         if bbox_resize_factor is not None:
             item_bbox = item_bbox.resized(bbox_resize_factor)
         for vert in item_bbox.vertices:
@@ -436,6 +445,10 @@ class SpatialIndex:
             if 0 <= i < bins_x and 0 <= j < bins_y:
                 covered_is.append(i)
                 covered_js.append(j)
+
+        if not (covered_is and covered_js):
+            return
+
         for i in range(min(covered_is), max(covered_is) + 1):
             for j in range(min(covered_js), max(covered_js) + 1):
                 self.items_in_bin[i][j].append(id)
@@ -478,9 +491,10 @@ class SpatialIndex:
         polygons: list[Polygon],
         bins: tuple[int, int] | int | None = None,
         bbox_resize_factor: float | None = None,
+        bbox_precomputed: Box | None = None,
     ):
         return SpatialIndex._build(
-            box=Box.bounding_all(polygons),
+            box=bbox_precomputed or Box.bounding_all(polygons),
             items=polygons.copy(),  # type: ignore
             bins=bins or len(polygons),
             bbox_resize_factor=bbox_resize_factor,
@@ -494,29 +508,87 @@ class SpatialIndex:
             bins=bins,
         )
 
-    def candidate_tiles(self, p: Point) -> Iterable[tuple[int, Polygon]]:
+    def set_rotation(self, new_angle: float | None) -> None:
+        self._rotation_angle = new_angle
+
+        if self.border_edges_precomputed is not None:
+            if new_angle is None:
+                self._border_edges_precomputed_rotated = None
+            else:
+                rot = rotation_matrix(new_angle)
+                self._border_edges_precomputed_rotated = [
+                    rotated_segment(edge, rot) for edge in self.border_edges_precomputed
+                ]
+
+        # clearing out cached properties that depend on rotation
+        # see https://docs.python.org/3/library/functools.html#functools.cached_property
+        for attrname in (
+            "_extrinsic2intrinsic_rm",
+            "_intrinsic2extrinsic_rm",
+            "border_edges",
+        ):
+            try:
+                self.__delattr__(attrname)
+            except AttributeError:
+                pass
+
+    @functools.cached_property
+    def _extrinsic2intrinsic_rm(self) -> np.ndarray | None:
+        return rotation_matrix(-self._rotation_angle) if self._rotation_angle is not None else None
+
+    @functools.cached_property
+    def _intrinsic2extrinsic_rm(self) -> np.ndarray | None:
+        return rotation_matrix(self._rotation_angle) if self._rotation_angle is not None else None
+
+    def _to_intrinsic(self, p: Rotatable) -> Rotatable:
+        return (
+            p.rotated(self._extrinsic2intrinsic_rm)  # type: ignore
+            if self._extrinsic2intrinsic_rm is not None
+            else p
+        )
+
+    def _to_extrinsic(self, p: Rotatable) -> Rotatable:
+        return (
+            p.rotated(self._intrinsic2extrinsic_rm)  # type: ignore
+            if self._intrinsic2extrinsic_rm is not None
+            else p
+        )
+
+    def candidate_tiles(self, p: Point, is_intrinsic: bool = False) -> Iterable[tuple[int, Polygon]]:
+        if not is_intrinsic:
+            p = self._to_intrinsic(p)
         if not self.box.includes(p):
             return
+
+        bins_x, bins_y = self.bins
         cell_w, cell_h = self.cell_size
         icell = math.floor((p.x - self.box.anchor.x) / cell_w)
+        if icell < 0 or icell >= bins_x:
+            return
         jcell = math.floor((p.y - self.box.anchor.y) / cell_h)
+        if jcell < 0 or jcell >= bins_y:
+            return
+
         for candidate_id in self.items_in_bin[icell][jcell]:
             candidate = self.items[candidate_id]
             if isinstance(candidate, Polygon):
                 yield candidate_id, candidate
 
-    def lookup_tile_id(self, p: Point) -> int | None:
-        for candidate_id, candidate in self.candidate_tiles(p):
+    def lookup_all_tile_ids(self, p: Point, is_intrincis: bool = False) -> Iterable[int]:
+        if not is_intrincis:
+            p = self._to_intrinsic(p)
+        for candidate_id, candidate in self.candidate_tiles(p, is_intrinsic=True):
             if candidate.includes(p):
-                return candidate_id
+                yield candidate_id
+
+    def lookup_tile_id(self, p: Point, is_intrinsic: bool = False) -> int | None:
+        for candidate_id in self.lookup_all_tile_ids(p, is_intrincis=is_intrinsic):
+            return candidate_id
         else:
             return None
 
-    def lookup_all_tile_ids(self, p: Point) -> list[int]:
-        return [candidate_id for candidate_id, candidate in self.candidate_tiles(p) if candidate.includes(p)]
-
-    def is_inside_tiles(self, p: Point) -> bool:
-        return self.lookup_tile_id(p) is not None
+    def is_inside_tiles(self, p: Point, is_intrinsic: bool = False) -> bool:
+        return self.lookup_tile_id(p, is_intrinsic=is_intrinsic) is not None
 
     @functools.cached_property
     def cell_w(self) -> float:
@@ -532,16 +604,24 @@ class SpatialIndex:
 
     border_eps: ClassVar[float] = DEFAULT_EPS_DISTANCE
 
-    def is_border(self, edge: LineSegment) -> bool:
+    def is_border(self, edge: LineSegment, is_intrinsic: bool = False) -> bool:
         start, end = edge
+        if not is_intrinsic:
+            start = self._to_intrinsic(start)
+            end = self._to_intrinsic(end)
+
         vec = end - start
         small_normal = self.border_eps * Point(vec.y, -vec.x).normalized()
         middle = start + vec / 2
-        return self.is_inside_tiles(middle + small_normal) != self.is_inside_tiles(middle - small_normal)
+        return self.is_inside_tiles(middle + small_normal, is_intrinsic=True) != self.is_inside_tiles(
+            middle - small_normal, is_intrinsic=True
+        )
 
     @functools.cached_property
     def border_edges(self) -> list[LineSegment]:
-        if self.border_edges_precomputed is not None:
+        if self._border_edges_precomputed_rotated is not None:
+            return self._border_edges_precomputed_rotated
+        elif self._rotation_angle is None and self.border_edges_precomputed is not None:
             return self.border_edges_precomputed
 
         polys = cast(Iterable[Polygon], filter(lambda item: isinstance(item, Polygon), self.items))
@@ -553,12 +633,23 @@ class SpatialIndex:
         candidate_edges = [edge for edge, edge_id in zip(candidate_edges, edge_id) if count[edge_id] == 1]
 
         # explicit check for the rest
-        return [edge for edge in candidate_edges if self.is_border(edge)]
+        return [
+            (self._to_extrinsic(edge[0]), self._to_extrinsic(edge[1]))
+            for edge in candidate_edges
+            if self.is_border(edge, is_intrinsic=True)
+        ]
 
-    def is_inscribed(self, poly: Polygon) -> bool:
-        return all(self.is_inside_tiles(p) for p in poly.vertices) and all(
-            not any(do_intersect(edge, border_edge) for border_edge in self.border_edges) for edge in poly.edges
+    def is_inscribed(self, ext_poly: Polygon) -> bool:
+        logger.debug("Checking if %s is inscribed in indexed tiles...", ext_poly)
+        are_all_verts_inside = all(self.is_inside_tiles(vert, is_intrinsic=False) for vert in ext_poly.vertices)
+        logger.debug("All %s verts inside = %s", len(ext_poly.vertices), are_all_verts_inside)
+        if not are_all_verts_inside:
+            return False
+        no_edge_crossing = all(
+            not any(do_intersect(edge, border_edge) for border_edge in self.border_edges) for edge in ext_poly.edges
         )
+        logger.debug("No edge crossing = %s", no_edge_crossing)
+        return no_edge_crossing
 
 
 def rectanglize_tiling(
@@ -567,30 +658,38 @@ def rectanglize_tiling(
     rotate: bool = True,
     max_tries: int = 30,
     border_edges_precomputed: list[LineSegment] | None = None,
+    rotate_index: bool = True,
 ) -> list[Polygon]:
-    logger.info(f"Rectanglizing {len(tiles)} tiles into {target_bins} bins")
-    if border_edges_precomputed is not None:
-        logger.info("Border precomputed")
-        border_edges = border_edges_precomputed
-    else:
-        logger.info("Computing aux index...")
-        index = SpatialIndex.from_polygons(tiles, bins=len(tiles) * 10)
-        logger.info("Computing border edges...")
-        border_edges = index.border_edges
-        logger.info(f"Computed border edges: {len(border_edges)}")
-
     target_bins_x, target_bins_y = target_bins
+    logger.info(f"Rectanglizing {len(tiles)} tiles into {target_bins_x} x {target_bins_y} = {target_bins} bins")
+
+    logger.info("Indexing tiles")
+    tiles_index = SpatialIndex.from_polygons(tiles)
+    if border_edges_precomputed is not None:
+        tiles_index.border_edges_precomputed = border_edges_precomputed
+    border_edges = tiles_index.border_edges
 
     best: tuple[list[Polygon], Box, float, float, float] | None = None
     for i_try in range(max_tries):
         if rotate:
             angle = np.random.random() * 2 * math.pi
-            tiles = rotated(tiles, angle=angle)
-            border_edges = rotated(border_edges, angle=angle)
+            logger.debug("Rotating to angle: %s", angle)
+            rot_tiles = all_rotated(tiles, angle=angle)
+            logger.debug("Tiles rotated")
+            if rotate_index:
+                tiles_index.set_rotation(angle)
+                logger.debug("Index rotated")
+            else:
+                logger.debug("Recomputing index of rotated tiles")
+                tiles_index = SpatialIndex.from_polygons(rot_tiles)
+                tiles_index.border_edges_precomputed = all_rotated(border_edges, angle=angle)
         else:
-            tiles = tiles
-            border_edges = border_edges
-        res, box = _try_rectanglize(tiles=tiles, border_edges=border_edges)
+            rot_tiles = tiles
+        res, box = _rectanglize_axis_aligned(tiles=rot_tiles, tiles_index=tiles_index)
+
+        if rotate_index:
+            tiles_index.set_rotation(None)  # reset for safety
+
         bin_ratio = box.width / box.height
         bins_y = math.sqrt(len(res) / bin_ratio)
         bins_x = bin_ratio * bins_y
@@ -622,19 +721,24 @@ def rectanglize_tiling(
     return clipped_to_box(res, sub_box)
 
 
-def _try_rectanglize(tiles: list[Polygon], border_edges: list[LineSegment]) -> tuple[list[Polygon], Box]:
-    tiles_index = SpatialIndex.from_polygons(tiles)
-    tiles_index.border_edges_precomputed = border_edges
-
+def _rectanglize_axis_aligned(tiles: list[Polygon], tiles_index: SpatialIndex) -> tuple[list[Polygon], Box]:
+    logger.debug("Rectanglizing %s tiles to axis aligned box", len(tiles))
     bbox = Box.bounding_all(tiles)
 
-    while True:
+    logger.debug("Bbox computed: %s", bbox)
+
+    center_tries = 1000
+    for _ in range(center_tries):
         center = Point(
             x=bbox.anchor.x + np.random.random() * bbox.width,
             y=bbox.anchor.y + np.random.random() * bbox.height,
         )
         if tiles_index.is_inside_tiles(center):
             break
+    else:
+        raise RuntimeError(f"Unable to find point inside of the tiling after {center_tries} tries")
+
+    logger.debug("Chosen rect center inside the tiling: %s", center)
 
     # first, we find a reasonably inscribed square
     side_init = bbox.width / 2
@@ -649,16 +753,19 @@ def _try_rectanglize(tiles: list[Polygon], border_edges: list[LineSegment]) -> t
         ]
     ).scaled(0.5)
     box_rect: Polygon | None = None
-    for iter in itertools.count():
+    iteration = None
+    for iteration in itertools.count():
         box_rect = unit_square.scaled(side).translated(center)
         if tiles_index.is_inscribed(box_rect):
-            if iter > 10:
+            if iteration > 5:
                 break
             else:
                 side += side_step
         else:
             side -= side_step
         side_step /= 2
+
+    logger.debug("Rect side after binary search of %s iterations: %s", iteration, side)
 
     assert box_rect is not None
     box = Box(anchor=box_rect.vertices[0], width=side, height=side)
