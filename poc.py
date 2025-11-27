@@ -14,11 +14,12 @@ from funbin.penrose import penrose_tiling
 from funbin.voronoi import voronoi
 
 if __name__ == "__main__":
+    np.random.seed(161)
     logging.basicConfig(level=logging.INFO)
 
     fig, axes = plt.subplots(figsize=(15, 15), ncols=3, nrows=3)
     axes = cast(Sequence[Axes], axes.flatten())
-    np.random.seed(161)
+
     sample_size = 50000
 
     gauss_1 = np.random.normal(loc=0, scale=1.0, size=(2, sample_size))
