@@ -10,9 +10,9 @@ from funbin.geometry import rectanglize_tiling
 
 pr = cProfile.Profile()
 
-np.random.seed(161)
+np.random.seed(162)
 
-bins = (20, 20)
+bins = (30, 30)
 target_bins = bins[0] * bins[1]
 conserv_bins = 5 * target_bins
 niter = int(math.ceil(math.log(conserv_bins / 0.33) / math.log(6)))
