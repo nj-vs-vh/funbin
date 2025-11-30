@@ -135,11 +135,12 @@ class Box:
     @staticmethod
     def bounding(points: np.ndarray | Iterable[Point]) -> "Box":
         points_arr = points if isinstance(points, np.ndarray) else np.array([(p.x, p.y) for p in points])
+        mask = np.isfinite(points_arr[:, 0]) & np.isfinite(points_arr[:, 1])
 
-        xmin = np.min(points_arr[:, 0])
-        xmax = np.max(points_arr[:, 0])
-        ymin = np.min(points_arr[:, 1])
-        ymax = np.max(points_arr[:, 1])
+        xmin = np.min(points_arr[mask, 0])
+        xmax = np.max(points_arr[mask, 0])
+        ymin = np.min(points_arr[mask, 1])
+        ymax = np.max(points_arr[mask, 1])
         return Box(
             anchor=Point(xmin, ymin),
             width=xmax - xmin,
