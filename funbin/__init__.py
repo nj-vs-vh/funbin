@@ -1,5 +1,6 @@
 import itertools
 
+import matplotlib
 import numpy as np
 from matplotlib.axes import Axes
 from matplotlib.collections import PolyCollection
@@ -15,7 +16,7 @@ def funbin(
     tiling: list[Polygon],
     *,
     weights: np.ndarray | None = None,
-    cmap: str | Colormap = "viridis",
+    cmap: str | Colormap | None = None,
     norm: str | Normalize = "linear",
     density: bool = True,
     spatial_indexing: bool = True,
@@ -51,7 +52,7 @@ def funbin(
     poly_coll_kw.setdefault("edgecolors", "face")
     pc = PolyCollection([p.verts for p in tiling], **poly_coll_kw)
     pc.set_array(tile_values)
-    pc.set_cmap(cmap)
+    pc.set_cmap(cmap or matplotlib.rcParams.get("image.cmap", "viridis"))
     pc.set_norm(norm)
     ax.add_collection(pc)
     samples_bbox.fit_axes(ax)
