@@ -245,3 +245,4 @@ misc
 *.png
 !media/demo.png
 !scripts
+scripts/compas_preproc

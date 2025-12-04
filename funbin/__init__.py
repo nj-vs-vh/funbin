@@ -1,4 +1,5 @@
 import itertools
+from typing import Literal
 
 import matplotlib
 import numpy as np
@@ -20,6 +21,7 @@ def funbin(
     norm: str | Normalize = "linear",
     density: bool = True,
     spatial_indexing: bool = True,
+    edge_shading: Literal["none", "inverted"] = "none",
     **poly_coll_kw,
 ) -> PolyCollection:
     assert x.ndim == 1
@@ -49,7 +51,16 @@ def funbin(
                     break
 
     tile_values = [tile_weight / (poly.area if density else 1.0) for tile_weight, poly in zip(weight_per_tile, tiling)]
-    poly_coll_kw.setdefault("edgecolors", "face")
+    match edge_shading:
+        case "none":
+            poly_coll_kw.setdefault("edgecolors", "face")
+        case "inverted":
+            empty_tile_border = "gray"
+            max_tile_value = max(tile_values)
+            tile_values_scaled = [float(v / max_tile_value) for v in tile_values]
+            edgecolors = [(empty_tile_border, float(1 - norm_tile_value)) for norm_tile_value in tile_values_scaled]
+            poly_coll_kw.setdefault("edgecolors", edgecolors)
+            poly_coll_kw.setdefault("linewidth", 0.2)
     pc = PolyCollection([p.verts for p in tiling], **poly_coll_kw)
     pc.set_array(tile_values)
     pc.set_cmap(cmap or matplotlib.rcParams.get("image.cmap", "viridis"))
