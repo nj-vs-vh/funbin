@@ -60,7 +60,7 @@ def funbin(
             tile_values_scaled = [float(v / max_tile_value) for v in tile_values]
             edgecolors = [(empty_tile_border, float(1 - norm_tile_value)) for norm_tile_value in tile_values_scaled]
             poly_coll_kw.setdefault("edgecolors", edgecolors)
-            poly_coll_kw.setdefault("linewidth", 0.2)
+    poly_coll_kw.setdefault("linewidth", 0.05)
     pc = PolyCollection([p.verts for p in tiling], **poly_coll_kw)
     pc.set_array(tile_values)
     pc.set_cmap(cmap or matplotlib.rcParams.get("image.cmap", "viridis"))
