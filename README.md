@@ -32,3 +32,4 @@
 ## Data sources
 
 - [Hipparcus star catalog](https://www.kaggle.com/datasets/konivat/hipparcos-star-catalog?resource=download), see correct ref therein
+- [Quaia quasar catalog](https://zenodo.org/records/10403370)
