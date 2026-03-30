@@ -9,11 +9,7 @@ def voronoi(points: int | np.ndarray) -> list[Polygon]:
         points = np.random.random(size=(points, 2))
 
     polycoll = shapely.voronoi_polygons(geometry=shapely.MultiPoint(points))
-    res: list[Polygon] = []
-    for p in polycoll.geoms:
-        x, y = p.boundary.xy
-        res.append(Polygon(verts=np.vstack((np.array(x)[:-1], np.array(y)[:-1])).T))
-
+    res = [Polygon.from_shapely(p) for p in polycoll.geoms]
     bbox = Box.bounding(points).resized(1.1)
     return [p.clipped(to=bbox) for p in res]
 

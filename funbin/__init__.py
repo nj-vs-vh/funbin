@@ -6,6 +6,7 @@ import numpy as np
 from matplotlib.axes import Axes
 from matplotlib.collections import PolyCollection
 from matplotlib.colors import Colormap, Normalize
+from matplotlib.projections.geo import GeoAxes
 
 from funbin.geometry import Box, Point, Polygon, SpatialIndex, fitted_to_box
 
@@ -32,10 +33,11 @@ def funbin(
     tiling = fitted_to_box(tiling, samples_bbox)
 
     weight_per_tile = [0.0 for _ in tiling]
+    sample_weights = weights if weights is not None else itertools.repeat(1.0 / samples.shape[0])
 
     if spatial_indexing:
         indexed_tiling = SpatialIndex.from_polygons(tiling, bins=len(tiling))
-        for sample, weight in zip(samples, weights or itertools.repeat(1.0 / samples.shape[0])):
+        for sample, weight in zip(samples, sample_weights):
             # for tile_id in indexed_tiling.lookup_all_tile_ids(Point(*sample)):
             #     weight_per_tile[tile_id] += weight
 
@@ -43,7 +45,7 @@ def funbin(
             if tile_id is not None:
                 weight_per_tile[tile_id] += weight
     else:
-        for sample, weight in zip(samples, weights or itertools.repeat(1.0 / samples.shape[0])):
+        for sample, weight in zip(samples, sample_weights):
             p = Point(*sample)
             for tile_id, poly in enumerate(tiling):
                 if poly.includes(p):
@@ -66,5 +68,6 @@ def funbin(
     pc.set_cmap(cmap or matplotlib.rcParams.get("image.cmap", "viridis"))
     pc.set_norm(norm)
     ax.add_collection(pc)
-    samples_bbox.fit_axes(ax)
+    if not isinstance(ax, GeoAxes):
+        samples_bbox.fit_axes(ax)
     return pc

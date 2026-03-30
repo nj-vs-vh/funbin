@@ -8,6 +8,7 @@ from typing import Callable, ClassVar, Iterable, Literal, TypeVar, cast
 
 import matplotlib
 import numpy as np
+import shapely
 from matplotlib.axes import Axes
 from matplotlib.collections import LineCollection, PolyCollection
 from matplotlib.patches import Rectangle
@@ -266,6 +267,15 @@ class Box:
             **patch_kw,
         )
 
+    def rectangular_tiling(self, bins: tuple[int, int]) -> "list[Polygon]":
+        x_edges = np.linspace(self.left, self.right, bins[0] + 1)
+        y_edges = np.linspace(self.bottom, self.top, bins[1] + 1)
+        tiling: list[Polygon] = []
+        for xmin, xmax in itertools.pairwise(x_edges):
+            for ymin, ymax in itertools.pairwise(y_edges):
+                tiling.append(Box(Point(xmin, ymin), (xmax - xmin), (ymax - ymin)).as_polygon)
+        return tiling
+
 
 @dataclass(frozen=True)
 class Polygon:
@@ -317,6 +327,14 @@ class Polygon:
     @staticmethod
     def from_points(points: Iterable[Point]) -> "Polygon":
         return Polygon(np.array([(v.x, v.y) for v in points]))
+
+    @staticmethod
+    def from_shapely(p: shapely.Polygon) -> "Polygon":
+        x, y = p.exterior.xy  # NOTE: ignoring holes!
+        return Polygon(verts=np.vstack((np.array(x)[:-1], np.array(y)[:-1])).T)
+
+    def to_shapely(self) -> shapely.Polygon:
+        return shapely.Polygon([(p.x, p.y) for p in self.edge_endpoints])
 
     def moved(self, from_: Box, to: Box) -> "Polygon":
         x = to.anchor.x + (self.verts[:, 0] - from_.anchor.x) * to.width / from_.width
@@ -825,3 +843,40 @@ def _rectanglize_axis_aligned(tiles: list[Polygon], tiles_index: SpatialIndex) -
                     box = box.stretched_up(new_coord)
 
     return clipped_to_box(tiles, box=box), box
+
+
+def tile_polygon(poly: Polygon, tiling: list[Polygon]) -> list[Polygon]:
+    return _tile_shapely_polygon(spoly=poly.to_shapely(), tiling=tiling)
+
+
+def _tile_shapely_polygon(spoly: shapely.Polygon, tiling: list[Polygon]) -> list[Polygon]:
+    result: list[Polygon] = []
+    for tile in tiling:
+        intersection = spoly.intersection(tile.to_shapely())
+        match intersection:
+            case shapely.Polygon():
+                isect_shpolys = [intersection]
+            case shapely.MultiPolygon():
+                isect_shpolys = intersection.geoms
+            case _:
+                continue
+
+        isect_polys = [Polygon.from_shapely(p) for p in isect_shpolys]
+        isect_polys = [p for p in isect_polys if p.verts.size > 0 and p.area > 1e-6]
+        result.extend(isect_polys)
+    return result
+
+
+def tile_negative_space(polys: list[Polygon], tiling: list[Polygon], box: Box | None = None) -> list[Polygon]:
+    bbox = box if box is not None else Box.bounding_all(polys)
+    sh_polygons = [p.to_shapely() for p in polys]
+    negative = bbox.as_polygon.to_shapely().difference(shapely.unary_union(sh_polygons))
+
+    if isinstance(negative, shapely.Polygon):
+        negatives = [negative]
+    elif isinstance(negative, shapely.MultiPolygon):
+        negatives = list(negative.geoms)
+    else:
+        return []
+
+    return list(itertools.chain.from_iterable(_tile_shapely_polygon(neg, tiling=tiling) for neg in negatives))
