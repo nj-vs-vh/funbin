@@ -9,6 +9,7 @@ from typing import Callable, ClassVar, Iterable, Literal, TypeVar, cast
 import matplotlib
 import numpy as np
 import shapely
+import sphericalpolygon
 from matplotlib.axes import Axes
 from matplotlib.collections import LineCollection, PolyCollection
 from matplotlib.patches import Rectangle
@@ -319,6 +320,18 @@ class Polygon:
     def area(self) -> float:
         return 0.5 * abs(sum((p1.x - p2.x) * (p1.y + p2.y) for (p1, p2) in self.edges))
 
+    @functools.cached_property
+    def solid_angle(self) -> float:
+        """Assumes the polygon's vertices are (lon, lat) in radians"""
+        sp = sphericalpolygon.Sphericalpolygon(
+            vertices=np.degrees(self.verts[:, ::-1])
+        )  # sphericalpolygon uses (lat, lon) convention
+        return sp.area()
+
+    def spherical_area(self, R: float = 6370.0) -> float:
+        """In squared units of R; defaults to square kilometers"""
+        return self.solid_angle * R**2
+
     @staticmethod
     def from_rhombus(r: Rhombus) -> "Polygon":
         vertices: list[RhombusVertex] = r.vertices()
@@ -332,6 +345,19 @@ class Polygon:
     def from_shapely(p: shapely.Polygon) -> "Polygon":
         x, y = p.exterior.xy  # NOTE: ignoring holes!
         return Polygon(verts=np.vstack((np.array(x)[:-1], np.array(y)[:-1])).T)
+
+    @staticmethod
+    def from_shapely_anypoly(anypoly: shapely.MultiPolygon | shapely.Polygon) -> "list[Polygon]":
+        match anypoly:
+            case shapely.Polygon():
+                return [Polygon.from_shapely(anypoly)]
+            case shapely.MultiPolygon():
+                return [Polygon.from_shapely(shp) for shp in anypoly.geoms]
+            case _:
+                return []
+
+    def to_radians(self) -> "Polygon":
+        return Polygon(verts=np.radians(self.verts))
 
     def to_shapely(self) -> shapely.Polygon:
         return shapely.Polygon([(p.x, p.y) for p in self.edge_endpoints])

@@ -1,12 +1,11 @@
 import itertools
-from typing import Literal
+from typing import Callable, Literal
 
 import matplotlib
 import numpy as np
 from matplotlib.axes import Axes
 from matplotlib.collections import PolyCollection
-from matplotlib.colors import Colormap, Normalize
-from matplotlib.projections.geo import GeoAxes
+from matplotlib.colors import Colormap, LogNorm, Normalize
 
 from funbin.geometry import Box, Point, Polygon, SpatialIndex, fitted_to_box
 
@@ -19,10 +18,11 @@ def funbin(
     *,
     weights: np.ndarray | None = None,
     cmap: str | Colormap | None = None,
-    norm: str | Normalize = "linear",
+    norm: str | Normalize | Callable[[list[float]], Normalize] = "linear",
     density: bool = True,
     spatial_indexing: bool = True,
     edge_shading: Literal["none", "inverted"] = "none",
+    is_spherical: bool = False,
     **poly_coll_kw,
 ) -> PolyCollection:
     assert x.ndim == 1
@@ -33,7 +33,7 @@ def funbin(
     tiling = fitted_to_box(tiling, samples_bbox)
 
     weight_per_tile = [0.0 for _ in tiling]
-    sample_weights = weights if weights is not None else itertools.repeat(1.0 / samples.shape[0])
+    sample_weights = weights if weights is not None else itertools.repeat(1.0)
 
     if spatial_indexing:
         indexed_tiling = SpatialIndex.from_polygons(tiling, bins=len(tiling))
@@ -52,7 +52,10 @@ def funbin(
                     weight_per_tile[tile_id] += weight
                     break
 
-    tile_values = [tile_weight / (poly.area if density else 1.0) for tile_weight, poly in zip(weight_per_tile, tiling)]
+    tile_values = [
+        tile_weight / (1.0 if not density else (poly.area if not is_spherical else poly.solid_angle))
+        for tile_weight, poly in zip(weight_per_tile, tiling)
+    ]
     match edge_shading:
         case "none":
             poly_coll_kw.setdefault("edgecolors", "face")
@@ -66,8 +69,11 @@ def funbin(
     pc = PolyCollection([p.verts for p in tiling], **poly_coll_kw)
     pc.set_array(tile_values)
     pc.set_cmap(cmap or matplotlib.rcParams.get("image.cmap", "viridis"))
-    pc.set_norm(norm)
+    if not isinstance(norm, (Normalize, str)):
+        pc.set_norm(norm(tile_values))
+    else:
+        pc.set_norm(norm)
     ax.add_collection(pc)
-    if not isinstance(ax, GeoAxes):
+    if not is_spherical:
         samples_bbox.fit_axes(ax)
     return pc
