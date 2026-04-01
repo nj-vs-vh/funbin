@@ -1,21 +1,23 @@
+# `funbin` – enabling **f**undamental **u**nderstanding of **N**ature with novel **bin**ning methods for 2D histograms
+
+[![arXiv](https://img.shields.io/badge/arXiv-2603.30006-b31b1b.svg)](https://arxiv.org/abs/2603.30006)
+
 ## Demo
 
 ![poc](media/demo.png)
 
-## Ideas
+## Some ideas
 
 - Penrose tilings
-- Aperiodic monotile options
+- Aperiodic monotile
 - random points' Voronoi diagram
-- random line ensemble intersections
-- world maps, any other fun map e.g. a super gerrymandered maps from US
-- square grid with a very long and complicated name
-- color-quantized and flood-filled photo
+- random line sets
+- world map, any other fun maps
+- polygon-segmented photo
 - black metal logos
 - Fibonacci tiling
-- ???
 
-## Refs:
+## Some references:
 
 - [hat tiling with SAT solver](https://www.hgreer.com/HatTile/)
 - [very nice but very long article about P2, P3, hat](https://www.chiark.greenend.org.uk/~sgtatham/quasiblog/aperiodic-tilings/)
@@ -28,8 +30,3 @@
 - [P1 tiling rules](https://imgur.com/tNhJT4T)
 - [very detailed BSc thesis on the topic](https://pcwww.liv.ac.uk/~hemraj/thesis/BSc/2021_Daniel_Gouldsbrough_BSc_Thesis.pdf)
 - [KIPPI algorithm for polygon "extraction" from images](https://inria.hal.science/hal-01740958/file/kippi.pdf)
-
-## Data sources
-
-- [Hipparcus star catalog](https://www.kaggle.com/datasets/konivat/hipparcos-star-catalog?resource=download), see correct ref therein
-- [Quaia quasar catalog](https://zenodo.org/records/10403370)
