@@ -5,7 +5,7 @@ import matplotlib
 import numpy as np
 from matplotlib.axes import Axes
 from matplotlib.collections import PolyCollection
-from matplotlib.colors import Colormap, LogNorm, Normalize
+from matplotlib.colors import Colormap, Normalize
 
 from funbin.geometry import Box, Point, Polygon, SpatialIndex, fitted_to_box
 
