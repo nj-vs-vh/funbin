@@ -6,18 +6,20 @@ My April Fools arXiv entry: [![arXiv](https://img.shields.io/badge/arXiv-2603.30
 
 ![poc](media/demo.png)
 
-## Some ideas
+## Notes
 
-- Penrose tilings
-- Aperiodic monotile
-- random points' Voronoi diagram
-- random line sets
-- world map, any other fun maps
+### Ideas
+
+- [x] Penrose tilings
+- [x] Aperiodic monotile
+- [x] random points' Voronoi diagram
+- [x] world map and fun subdivision maps
 - polygon-segmented photo
 - black metal logos
+- random line sets
 - Fibonacci tiling
 
-## Some references:
+### References:
 
 - [hat tiling with SAT solver](https://www.hgreer.com/HatTile/)
 - [very nice but very long article about P2, P3, hat](https://www.chiark.greenend.org.uk/~sgtatham/quasiblog/aperiodic-tilings/)
