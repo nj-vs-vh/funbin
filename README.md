@@ -1,6 +1,6 @@
 # `funbin` – *f*undamental *u*nderstanding of *N*ature with novel *bin*ning methods for 2D histograms
 
-[![April Fools arXiv entry](https://img.shields.io/badge/arXiv-2603.30006-b31b1b.svg)](https://arxiv.org/abs/2603.30006)
+My April Fools arXiv entry: [![arXiv](https://img.shields.io/badge/arXiv-2603.30006-b31b1b.svg)](https://arxiv.org/abs/2603.30006)
 
 ## Demo
 
